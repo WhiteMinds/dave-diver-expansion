@@ -1,6 +1,9 @@
 #!/bin/bash
 # Setup BepInEx 6 Bleeding Edge (IL2CPP) for Dave the Diver
 # Usage: bash scripts/setup-bepinex.sh [game_path]
+#
+# Installs:
+#   1. BepInEx 6.0.0-be.753 (IL2CPP x64)
 
 set -e
 
@@ -37,50 +40,54 @@ if [ ! -f "$GAME_PATH/DaveTheDiver.exe" ]; then
     exit 1
 fi
 
-# Check if BepInEx is already installed
+# ── BepInEx 6 BE ──────────────────────────────────────────────
+
+BEPINEX_INSTALLED=false
 if [ -d "$GAME_PATH/BepInEx/core" ]; then
-    echo "BepInEx already appears to be installed at $GAME_PATH/BepInEx"
-    echo "To reinstall, delete the BepInEx folder first."
+    echo "[BepInEx] Already installed."
+    BEPINEX_INSTALLED=true
+else
+    BEPINEX_VERSION="6.0.0-be.753+0d275a4"
+    BEPINEX_URL="https://builds.bepinex.dev/projects/bepinex_be/753/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.753%2B0d275a4.zip"
+    TEMP_ZIP="/tmp/bepinex-be.zip"
 
-    if [ -d "$GAME_PATH/BepInEx/interop" ]; then
-        echo "Interop DLLs found. Ready for development."
-    else
-        echo ""
-        echo "WARNING: Interop DLLs not found."
-        echo "Please launch the game once to generate them."
+    echo ""
+    echo "[BepInEx] Downloading $BEPINEX_VERSION ..."
+    curl -L -o "$TEMP_ZIP" "$BEPINEX_URL"
+
+    if [ ! -f "$TEMP_ZIP" ] || [ ! -s "$TEMP_ZIP" ]; then
+        echo "ERROR: BepInEx download failed."
+        exit 1
     fi
-    exit 0
+
+    echo "[BepInEx] Extracting to $GAME_PATH ..."
+    unzip -o "$TEMP_ZIP" -d "$GAME_PATH"
+    rm -f "$TEMP_ZIP"
+
+    echo "[BepInEx] Installed successfully."
+    BEPINEX_INSTALLED=true
 fi
 
-# BepInEx 6 BE download
-BEPINEX_VERSION="6.0.0-be.753+0d275a4"
-BEPINEX_URL="https://builds.bepinex.dev/projects/bepinex_be/753/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.753%2B0d275a4.zip"
-TEMP_ZIP="/tmp/bepinex-be.zip"
-
-echo ""
-echo "Downloading BepInEx $BEPINEX_VERSION ..."
-curl -L -o "$TEMP_ZIP" "$BEPINEX_URL"
-
-if [ ! -f "$TEMP_ZIP" ] || [ ! -s "$TEMP_ZIP" ]; then
-    echo "ERROR: Download failed."
-    exit 1
-fi
-
-echo "Extracting to $GAME_PATH ..."
-unzip -o "$TEMP_ZIP" -d "$GAME_PATH"
-
-echo "Cleaning up..."
-rm -f "$TEMP_ZIP"
+# ── Summary ───────────────────────────────────────────────────
 
 echo ""
 echo "========================================"
-echo "  BepInEx 6 BE installed successfully!"
+echo "  Setup complete!"
 echo "========================================"
 echo ""
-echo "NEXT STEPS:"
-echo "  1. Launch Dave the Diver once"
-echo "  2. Wait for the game to fully load (BepInEx generates interop DLLs)"
-echo "  3. Close the game"
-echo "  4. Verify: ls \"$GAME_PATH/BepInEx/interop/Assembly-CSharp.dll\""
-echo "  5. Build your mod: dotnet build src/DaveDiverExpansion/DaveDiverExpansion.csproj"
+echo "  BepInEx 6 BE:     installed"
+
+if [ ! -d "$GAME_PATH/BepInEx/interop" ]; then
+    echo ""
+    echo "NEXT STEPS:"
+    echo "  1. Launch Dave the Diver once"
+    echo "  2. Wait for the game to fully load (BepInEx generates interop DLLs)"
+    echo "  3. Close the game"
+    echo "  4. Verify: ls \"$GAME_PATH/BepInEx/interop/Assembly-CSharp.dll\""
+    echo "  5. Build: dotnet build src/DaveDiverExpansion/DaveDiverExpansion.csproj"
+else
+    echo ""
+    echo "Interop DLLs found. Ready for development."
+    echo "  Build: dotnet build src/DaveDiverExpansion/DaveDiverExpansion.csproj"
+fi
 echo ""

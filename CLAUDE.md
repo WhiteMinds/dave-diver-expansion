@@ -52,15 +52,36 @@ ilspycmd -t ClassName "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 # 只看公开方法列表
 ilspycmd -t ClassName "<GamePath>/BepInEx/interop/Assembly-CSharp.dll" | grep "public unsafe void [A-Z]"
 
-# 反编译整个 DLL 到目录（完整项目形式，一个类一个文件）
-ilspycmd -p -o /tmp/decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
+# 反编译整个 DLL 到项目 decompiled/ 目录（一次性，6700+ 文件）
+ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 ```
+
+### 项目级反编译（推荐）
+
+将整个 `Assembly-CSharp.dll` 反编译到项目的 `decompiled/` 目录，方便长期使用 Grep 全文搜索：
+
+```bash
+# 在项目根目录运行（只需执行一次，已在 .gitignore 中排除）
+ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
+```
+
+**注意事项**：
+- `ilspycmd -p` 对 IL2CPP interop DLL 会有部分类反编译失败（exit code 70），这是正常的
+- 已验证可成功反编译约 6700+ 文件，覆盖绝大多数游戏类
+- 部分类型（如 `SaveUserOptions`、`SaveSystemUserOptionManager`）在反编译中会失败
+- 对于反编译失败的类，仍可用 `ilspycmd -t ClassName` 单独反编译查看部分信息
+- `decompiled/` 已添加到 `.gitignore`，不会提交到仓库
+
+**为何推荐项目级反编译**：
+- 逐个类用 `ilspycmd -t` + `grep` 搜索效率极低（每次调用需数秒）
+- 反编译到目录后，可直接用 Grep 工具跨 6700+ 文件搜索，瞬间定位引用关系
+- 例如：搜索谁引用了某个类型、某个方法的调用者、某个字段在哪里被设置
 
 ### 新功能开发工作流
 
-1. 用 `ilspycmd -l type ... | grep -i keyword` 找到目标类
-2. 用 `ilspycmd -t ClassName ...` 查看完整类定义
-3. 用 `grep "public unsafe"` 过滤出公开方法签名
+1. 先确保 `decompiled/` 目录存在（`ilspycmd -p -o decompiled ...`）
+2. 用 Grep 在 `decompiled/` 中搜索关键类名/方法名，快速定位相关代码
+3. 用 `ilspycmd -t ClassName ...` 查看完整类定义（特别是 Grep 找不到的类）
 4. 确认方法参数类型（`BaseCharacter`、`PlayerCharacter` 等）
 5. 编写 `[HarmonyPatch]` + 在 `Plugin.cs` 的 `Load()` 中初始化
 6. `dotnet build` → 启动游戏测试 → 查看 `LogOutput.log`
@@ -76,8 +97,21 @@ ilspycmd -p -o /tmp/decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `CrabTrapZone` | 捕蟹笼区域 | `CheckAvailableInteraction(BaseCharacter)`, `SetUpCrabTrap(int)` |
 | `InGameManager` : `Singleton<InGameManager>` | 游戏管理器 | `playerCharacter` (获取玩家实例) |
 | `Singleton<T>` : `MonoBehaviour` | 单例基类 | `Instance` (静态属性) |
+| `SingletonNoMono<T>` : `Il2CppSystem.Object` | 非 MonoBehaviour 单例基类 | `Instance` (静态属性) |
+| `DR.Save.SaveUserOptions` : `SaveDataBase` | 用户设置（语言、音量、按键等） | `CurrentLanguage`, `CheckLanguage(SystemLanguage)` |
+| `DR.Save.Languages` | 游戏语言枚举 | `Chinese=6`, `ChineseTraditional=41`, `English=10` |
+| `DataManager` : `Singleton<DataManager>` | 数据管理器 | `GetText(ref string textID)`（静态+实例两种） |
+| `FontManager` | 字体管理器 | `GetFont(SystemLanguage)`, `GetFontAsset(SystemLanguage)` |
 
 > 所有交互类使用 `OnTriggerEnter2D` 检测玩家碰撞，`SuccessInteract` 触发实际拾取。
+
+### 游戏语言系统
+
+- `DR.Save.SaveUserOptions.CurrentLanguage` 返回 `DR.Save.Languages` 枚举
+- `SaveUserOptions` 是序列化数据类（非 MonoBehaviour、非单例），需要通过 Harmony 补丁捕获实例或值
+- `SaveSystemUserOptionManager` 管理 SaveUserOptions 实例，但该类在 interop DLL 中无法被 ilspycmd 定位
+- 游戏广泛使用 `SystemLanguage`（Unity 内置枚举）处理字体、日期等
+- Mod 获取游戏语言的推荐方式：Harmony 补丁 `SaveUserOptions.get_CurrentLanguage` 的 Postfix 缓存返回值
 
 ## 首次设置
 
@@ -91,9 +125,13 @@ ilspycmd -p -o /tmp/decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 
 ```
 src/DaveDiverExpansion/
-├── Plugin.cs          # BepInEx 入口，继承 BasePlugin，初始化 Harmony
-├── Features/          # 每个功能一个文件，包含配置定义 + Harmony 补丁
-└── Helpers/           # 通用工具（IL2CPP 反射等）
+├── Plugin.cs                # BepInEx 入口，继承 BasePlugin，初始化 Harmony
+├── Features/
+│   ├── AutoPickup.cs        # 自动拾取功能 + Harmony 补丁
+│   └── ConfigUI.cs          # uGUI 游戏内配置面板 (F1 切换)
+└── Helpers/
+    ├── I18n.cs              # 国际化工具 + 游戏语言缓存 Harmony 补丁
+    └── Il2CppHelper.cs      # IL2CPP 反射工具
 ```
 
 - `Plugin.cs` — 入口点，`Load()` 中按顺序初始化各功能并调用 `_harmony.PatchAll()`
@@ -122,9 +160,24 @@ src/DaveDiverExpansion/
 
 - 所有用户可配置项通过 BepInEx `ConfigFile` 系统管理
 - 配置文件自动生成在 `<GamePath>/BepInEx/config/com.davediver.expansion.cfg`
-- 推荐安装 [BepInExConfigManager](https://github.com/sinai-dev/BepInExConfigManager) 提供游戏内 F5 配置面板
-  - 使用 UniverseLib 自建 UI，不依赖 IMGUI（IL2CPP 游戏 IMGUI 经常被 strip）
-  - 自动发现所有 `ConfigEntry`，开发者无需额外代码
+- 内置 **uGUI 配置面板**（`Features/ConfigUI.cs`），按 F1 打开
+  - 基于 UnityEngine.UI (uGUI)，纯代码构建，零第三方依赖
+  - 使用 `ClassInjector.RegisterTypeInIl2Cpp` 注册 MonoBehaviour，全场景热键检测
+  - 自动发现所有 `ConfigEntry`，按 section 分组
+  - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`enum` → Dropdown，其余 → InputField
+  - 修改立即生效，ConfigFile 自动保存
+  - 第三方 ConfigManager 不可用：IMGUI 被 strip，sinai-dev 版有 Unity 6 兼容问题
+  - **开发 uGUI 前必读**：[docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md)（踩坑记录）
+
+## 国际化 (i18n)
+
+- `Helpers/I18n.cs` 提供轻量翻译系统，仅支持中/英两种语言
+- 英文为默认语言（即 key），中文翻译存储在 `ZhCn` 字典中
+- 调用方式：`I18n.T("Enabled")` — 中文环境返回 `"启用"`，英文环境返回 `"Enabled"`
+- 语言检测优先级：ConfigEntry 手动设置 > Harmony 缓存的游戏语言 > OS 系统语言
+- Harmony Postfix 补丁 `SaveUserOptions.get_CurrentLanguage` 自动缓存游戏语言
+- **添加新功能翻译**：在 `I18n.cs` 的 `ZhCn` 字典中添加 `["EnglishKey"] = "中文值"` 条目
+- ConfigUI 面板每次打开时重新渲染，语言切换立即生效
 
 ## 开发原则
 

@@ -7,6 +7,10 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 - **Auto Pickup** — Automatically collects nearby fish, items, and chests while diving
   - Configurable pickup radius
   - Toggle fish / items / chests independently
+- **In-Game Config Panel** — Press F1 to open a settings UI overlay
+  - Auto-discovers all config entries from all features
+  - Toggle, slider, and text input controls based on value type
+  - Changes take effect immediately
 
 ## Installation (Players)
 
@@ -22,20 +26,16 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 2. Place it in `Dave the Diver\BepInEx\plugins\DaveDiverExpansion\`
 3. Launch the game
 
-### 3. (Recommended) Install Config Manager
+### 3. Configuration
 
-For an in-game settings UI (press F5), install [BepInExConfigManager](https://github.com/sinai-dev/BepInExConfigManager):
+Press **F1** in-game to open the built-in settings panel. All settings can be adjusted live and are saved automatically.
 
-1. Download from [Releases](https://github.com/sinai-dev/BepInExConfigManager/releases)
-2. Place `BepInExConfigManager.dll` and `UniverseLib.dll` in `BepInEx\plugins\`
-3. Place the patcher DLL in `BepInEx\patchers\`
-
-Without Config Manager, edit the config file directly:
+Alternatively, edit the config file directly:
 ```
 Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 ```
 
-### Configuration
+#### Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|

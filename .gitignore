@@ -26,5 +26,8 @@ desktop.ini
 # NuGet
 packages/
 
+# Decompiled game code (generated locally)
+decompiled/
+
 # Claude
 .claude/settings.local.json
