@@ -1,0 +1,77 @@
+<Project>
+
+  <!-- Import local GamePath (not in git) -->
+  <Import Project="$(MSBuildThisFileDirectory)GamePath.user.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)GamePath.user.props')" />
+
+  <PropertyGroup>
+    <TargetFramework>net480</TargetFramework>
+    <Platforms>AnyCPU</Platforms>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <BepInExPath>$(GamePath)\BepInEx</BepInExPath>
+    <InteropPath>$(BepInExPath)\interop</InteropPath>
+  </PropertyGroup>
+
+  <!-- BepInEx core references -->
+  <ItemGroup Label="BepInEx">
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExPath)\core\0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="BepInEx.Core">
+      <HintPath>$(BepInExPath)\core\BepInEx.Core.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="BepInEx.Unity.IL2CPP">
+      <HintPath>$(BepInExPath)\core\BepInEx.Unity.IL2CPP.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(BepInExPath)\core\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Game interop references -->
+  <ItemGroup Label="Game">
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(InteropPath)\Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(InteropPath)\Il2Cppmscorlib.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Unity interop references -->
+  <ItemGroup Label="Unity">
+    <Reference Include="UnityEngine">
+      <HintPath>$(InteropPath)\UnityEngine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(InteropPath)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(InteropPath)\UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.Physics2DModule">
+      <HintPath>$(InteropPath)\UnityEngine.Physics2DModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Auto-deploy to game BepInEx/plugins after build -->
+  <Target Name="DeployToGame" AfterTargets="Build" Condition="'$(GamePath)' != ''">
+    <PropertyGroup>
+      <PluginDir>$(GamePath)\BepInEx\plugins\DaveDiverExpansion</PluginDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(PluginDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginDir)" SkipUnchangedFiles="true" />
+    <Message Text="Deployed to $(PluginDir)" Importance="high" />
+  </Target>
+
+</Project>

@@ -1,0 +1,30 @@
+# Build output
+bin/
+obj/
+
+# Local dev config
+GamePath.user.props
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Compiled output
+*.dll
+*.pdb
+*.exe
+*.nupkg
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# NuGet
+packages/
+
+# Claude
+.claude/settings.local.json
