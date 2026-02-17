@@ -92,7 +92,7 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 |------|------|----------|
 | `PlayerCharacter` : `BaseCharacter` | 玩家角色控制器 | `Update()`, `FixedUpdate()`, `Awake()` |
 | `FishInteractionBody` | 可交互的鱼 | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `InteractionType` |
-| `PickupInstanceItem` | 掉落物品 | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)` |
+| `PickupInstanceItem` | 掉落物品基类（所有可拾取物品） | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `isNeedSwapSetID`, `usePreset`, `GetItemID()` |
 | `InstanceItemChest` | 宝箱 | `SuccessInteract(BaseCharacter)`, `IsOpen` |
 | `CrabTrapZone` | 捕蟹笼区域 | `CheckAvailableInteraction(BaseCharacter)`, `SetUpCrabTrap(int)` |
 | `InGameManager` : `Singleton<InGameManager>` | 游戏管理器 | `playerCharacter` (获取玩家实例) |
@@ -111,6 +111,36 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `SAFishData` : `ScriptableObject` | 鱼配置数据 | `AggressionType`（`FishAggressionType` 枚举）。是 ScriptableObject，不在 GameObject 上 |
 
 > 所有交互类使用 `OnTriggerEnter2D` 检测玩家碰撞，`SuccessInteract` 触发实际拾取。
+
+### PickupInstanceItem 物品系统
+
+**关键发现**: 游戏中所有可拾取物品的 IL2CPP 运行时类型都是 `PickupInstanceItem`（包括武器）。区分物品类型只能通过 **prefab 名称**（`gameObject.name`），不能通过 C# 类型。
+
+**双对象机制**: 每个动态掉落物品（`usePreset=False`）在场景中存在 **两个** GameObject：
+- 一个 `isNeedSwapSetID = itemID`（"幽灵"标记对象，不可交互）
+- 一个 `isNeedSwapSetID = 0`（真正可拾取的对象）
+- 生成点固定物品（`usePreset=True`）只有一个对象（`swapSetID=0`）
+
+**Prefab 名称分类**:
+
+| Prefab 名称 | 类型 | usePreset | 可自动拾取 |
+|---|---|---|---|
+| `Loot_Wood`, `Loot_Rope`, `Loot_ShellFish*` 等 | 材料（生成点） | True | ✅ |
+| `BulletBox` | 弹药 | True | ✅ |
+| `Loot_Fragment` | 碎片 | True | ✅ |
+| `SeaWeedsTemplate` | 海藻 | False | ✅ |
+| `OreLootObject` | 矿石 | False | ✅ |
+| `SeaUrchinItem` | 海胆 | False | ✅ |
+| `SeasoningTemplate` | 调料 | False | ✅ |
+| `PickupUpgradeItemKit` | 升级套件 | False | ✅ |
+| `PickupInstanceMelee` | 近战武器 | False | ❌ 会触发换武器循环 |
+| `PickupInstanceWeapon` | 远程武器 | False | ❌ 会触发换武器循环 |
+| `PickupElecHarpoonHead` | 电鱼叉头 | False | ❌ 装备类 |
+| `PickupChainHarpoonHead` | 连锁鱼叉头 | False | ❌ 装备类 |
+
+**武器换装循环问题**: 自动拾取武器 → 触发 `SuccessInteract` → 游戏执行装备切换，掉落当前武器 → 新掉落的武器被自动拾取 → 无限循环。解决方案：按 prefab 名称黑名单跳过 `PickupInstance*` 和 `*HarpoonHead*`。
+
+**`UpgradeKitInstanceItem` 子类**: 是 `PickupInstanceItem` 的子类，调用 `GetItemID()` 会抛出 `NullReferenceException`，需要 try-catch 保护或避免调用。
 
 ### 游戏语言系统
 

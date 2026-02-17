@@ -20,6 +20,10 @@ public static class AutoPickup
     // Track objects being destroyed this frame to avoid double-pickup
     private static readonly HashSet<GameObject> _pendingDestroy = new();
 
+    // Throttle FindObjectsOfType scans (same pattern as DiveMap)
+    private const float ScanInterval = 0.2f;
+    private static float _scanTimer;
+
     public static void Init(BepInEx.Configuration.ConfigFile config)
     {
         Enabled = config.Bind(
@@ -47,6 +51,10 @@ public static class AutoPickup
     internal static void TryPickupNearby(PlayerCharacter player)
     {
         if (!Enabled.Value) return;
+
+        _scanTimer += Time.deltaTime;
+        if (_scanTimer < ScanInterval) return;
+        _scanTimer = 0f;
 
         var playerPos = player.transform.position;
         var radius = PickupRadius.Value;
@@ -80,8 +88,17 @@ public static class AutoPickup
             {
                 if (item == null || item.gameObject == null) continue;
                 if (_pendingDestroy.Contains(item.gameObject)) continue;
+                if (item.isNeedSwapSetID != 0) continue; // swap-indicator ghost copy
                 if (item.transform.position == Vector3.zero) continue;
                 if (Vector3.Distance(playerPos, item.transform.position) > radius) continue;
+
+                // Skip weapons and equipment that trigger swap loops:
+                //   PickupInstanceMelee(Clone) — melee weapons
+                //   PickupInstanceWeapon(Clone) — ranged weapons
+                //   *HarpoonHead* — harpoon head upgrades
+                var goName = item.gameObject.name;
+                if (goName.StartsWith("PickupInstance") || goName.Contains("HarpoonHead"))
+                    continue;
 
                 if (item.CheckAvailableInteraction(player))
                 {
