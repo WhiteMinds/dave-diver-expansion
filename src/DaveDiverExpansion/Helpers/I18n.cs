@@ -37,6 +37,16 @@ public static class I18n
         // ConfigUI entries
         ["ToggleKey"] = "切换按键",
         ["Language"] = "语言",
+
+        // DiveMap entries
+        ["DiveMap"] = "潜水地图",
+        ["ShowEscapePods"] = "显示逃生点",
+        ["ShowFish"] = "显示鱼类",
+        ["ShowItems"] = "显示物品",
+        ["ShowChests"] = "显示宝箱",
+        ["MapSize"] = "地图大小",
+        ["MapOpacity"] = "地图透明度",
+        ["MiniMapZoom"] = "小地图缩放",
     };
 
     public static ConfigEntry<ModLanguage> LanguageSetting;

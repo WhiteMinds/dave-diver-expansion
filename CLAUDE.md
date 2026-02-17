@@ -102,6 +102,13 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `DR.Save.Languages` | 游戏语言枚举 | `Chinese=6`, `ChineseTraditional=41`, `English=10` |
 | `DataManager` : `Singleton<DataManager>` | 数据管理器 | `GetText(ref string textID)`（静态+实例两种） |
 | `FontManager` | 字体管理器 | `GetFont(SystemLanguage)`, `GetFontAsset(SystemLanguage)` |
+| `OrthographicCameraManager` : `Singleton<>` | 主相机管理器 | `m_Camera`（主 Camera）。注意：`m_BottomLeftPivot`/`m_TopRightPivot` 在 `CalculateCamerabox()` 前为 (0,0)，不可靠 |
+| `Interaction.Escape.EscapePodZone` | 逃生舱区域 | `transform.position`（不移动） |
+| `Interaction.Escape.EscapeMirror` | 逃生镜区域 | `transform.position`（不移动） |
+| `OxygenArea` | 氧气补充区域 | `minHP`, `chargeTime`, `isCharging`（注意：不是氧气宝箱） |
+| `SABaseFishSystem` | 鱼 AI 系统基类 | 所有鱼都有此组件，存储 AI 数据 |
+| `DR.AI.AwayFromTarget` : `AIAbility` | 逃跑 AI 能力 | 非攻击性鱼有此组件；攻击性鱼没有 |
+| `SAFishData` : `ScriptableObject` | 鱼配置数据 | `AggressionType`（`FishAggressionType` 枚举）。是 ScriptableObject，不在 GameObject 上 |
 
 > 所有交互类使用 `OnTriggerEnter2D` 检测玩家碰撞，`SuccessInteract` 触发实际拾取。
 
@@ -128,7 +135,8 @@ src/DaveDiverExpansion/
 ├── Plugin.cs                # BepInEx 入口，继承 BasePlugin，初始化 Harmony
 ├── Features/
 │   ├── AutoPickup.cs        # 自动拾取功能 + Harmony 补丁
-│   └── ConfigUI.cs          # uGUI 游戏内配置面板 (F1 切换)
+│   ├── ConfigUI.cs          # uGUI 游戏内配置面板 (F1 切换)
+│   └── DiveMap.cs           # 潜水地图 HUD (M 键切换，Camera→RenderTexture 方案)
 └── Helpers/
     ├── I18n.cs              # 国际化工具 + 游戏语言缓存 Harmony 补丁
     └── Il2CppHelper.cs      # IL2CPP 反射工具
@@ -168,6 +176,27 @@ src/DaveDiverExpansion/
   - 修改立即生效，ConfigFile 自动保存
   - 第三方 ConfigManager 不可用：IMGUI 被 strip，sinai-dev 版有 Unity 6 兼容问题
   - **开发 uGUI 前必读**：[docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md)（踩坑记录）
+
+## 潜水地图 (DiveMap)
+
+- `Features/DiveMap.cs` 实现潜水 HUD 小地图和大地图
+- **小地图**：右上角，跟随玩家，可配置缩放级别（`MiniMapZoom`）
+- **大地图**：按 M 键切换，屏幕中央显示完整关卡
+- 技术方案：独立正交 Camera → RenderTexture → RawImage
+  - Camera 必须 `CopyFrom(mainCam)` 继承 URP 管线设置
+  - 关卡边界从 `InGameManager.GetBoundary()` 获取（备选 `CurrentCameraBounds`）
+- **性能优化：扫描与重定位分离**
+  - 扫描阶段（`FindObjectsOfType`，每 0.5s）：发现新实体，缓存引用/坐标
+  - 重定位阶段（每帧）：从缓存读取坐标，更新 UI 标记位置
+  - 逃生点：不移动，进场景只扫描一次
+  - 箱子/物品：不移动，缓存 `Vector3` 坐标
+  - 鱼：会移动，缓存 `Transform` 引用，每帧读 `position`
+- **标记颜色**
+  - 玩家：白色 | 逃生点：绿色 | 鱼：蓝色 | 攻击性鱼：红色
+  - 物品：黄色 | 宝箱：橙色 | 氧气宝箱（`Chest_O2`）：青色
+- **攻击性鱼检测**：`fish.GetComponent<DR.AI.AwayFromTarget>() == null`
+  - 普通鱼有 `AwayFromTarget` 组件（遇敌逃跑），攻击性鱼没有
+  - 注意 `AwayFromTarget` 在命名空间 `DR.AI` 下
 
 ## 国际化 (i18n)
 

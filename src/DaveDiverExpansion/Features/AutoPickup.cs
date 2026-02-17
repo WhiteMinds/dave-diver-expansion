@@ -26,16 +26,16 @@ public static class AutoPickup
             "AutoPickup", "Enabled", true,
             "Enable automatic item pickup while diving");
         AutoPickupFish = config.Bind(
-            "AutoPickup", "AutoPickupFish", true,
+            "AutoPickup", "AutoPickupFish", false,
             "Auto-pickup dead fish");
         AutoPickupItems = config.Bind(
             "AutoPickup", "AutoPickupItems", true,
             "Auto-pickup dropped items");
         AutoOpenChests = config.Bind(
-            "AutoPickup", "AutoOpenChests", true,
+            "AutoPickup", "AutoOpenChests", false,
             "Auto-open treasure chests");
         PickupRadius = config.Bind(
-            "AutoPickup", "PickupRadius", 5f,
+            "AutoPickup", "PickupRadius", 2f,
             "Radius around the player to auto-pick items (in game units)");
 
         Plugin.Log.LogInfo($"AutoPickup initialized (enabled={Enabled.Value}, radius={PickupRadius.Value})");

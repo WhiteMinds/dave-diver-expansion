@@ -262,9 +262,9 @@ public static class ConfigUI
             var section = kv.Key.Section;
             var entry = kv.Value;
 
-            // Skip ToggleKey — it's the hotkey to open this panel, and KeyCode
-            // enums have hundreds of values that make a dropdown unusable.
-            if (section == "ConfigUI" && entry.Definition.Key == "ToggleKey")
+            // Skip ToggleKey entries — KeyCode enums have hundreds of values
+            // that make a dropdown unusable.
+            if (entry.Definition.Key == "ToggleKey")
                 continue;
 
             if (!sections.ContainsKey(section))

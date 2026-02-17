@@ -166,3 +166,157 @@ ilspycmd -t ClassName dll | grep "Public.*Static"            # 列出所有静�
 3. `grep -r "TypeName" decompiled/` — 在已反编译代码中搜索引用
 4. 如果 DLL 中有但 `-l type` 找不到 → 可能是嵌套类型或反编译器无法处理的类型
 5. 尝试带完整命名空间：`ilspycmd -t "Namespace.TypeName" dll`
+
+---
+
+## 5. 逆向工程补充工具
+
+除 ilspycmd + BepInEx interop DLL 外，以下工具在特定场景下有用：
+
+| 工具 | 用途 | 何时使用 |
+|------|------|----------|
+| **UnityExplorer** (IL2CPP 版) | 运行时场景浏览器，可实时查看 Hierarchy、Inspector、调用方法 | 探索 UI 结构、定位 Canvas/组件、调试运行时状态 |
+| **Cpp2IL** | 将 IL2CPP 二进制还原为伪代码，比 interop DLL 能看到更多实现逻辑 | ilspycmd 只能看签名时，需要理解方法的实际实现。CLI: `Cpp2IL-Win.exe --game-path="<GamePath>"` ([GitHub](https://github.com/SamboyCoding/Cpp2IL/releases)) |
+| **Cheat Engine** | 动态内存搜索，"什么改写了这个地址" 可反向定位函数 | 定位数值的存储位置和修改函数 |
+| **Il2CppDumper** | 独立的元数据提取工具，解析 GameAssembly.dll + global-metadata.dat | BepInEx 已自动生成 interop DLL，通常不需要；但可生成 IDA/Ghidra 脚本做深度分析。CLI: `Il2CppDumper.exe <GameAssembly.dll> <global-metadata.dat> <output/>` ([GitHub](https://github.com/Perfare/Il2CppDumper)) |
+
+---
+
+## 6. Job System / Burst Compiler 与 Hook 限制
+
+游戏的鱼群 AI（蜂群行为、碰撞检测）等高性能逻辑可能使用了 Unity 的 **C# Job System** + **Burst Compiler**。
+
+### 为什么 Harmony 无法 hook Burst 编译的代码
+
+- Burst 将 Job 代码编译为高度优化的原生机器码（LLVM），绕过 IL2CPP 的标准方法调用约定
+- 这些函数不在 GameAssembly.dll 的常规导出表中
+- 被内联或以紧凑汇编形式存在，Harmony 的 method detour 机制无法定位
+
+### 迂回策略
+
+不要尝试 hook Job 的 `Execute()` 方法。应该 hook：
+
+1. **Job 调度阶段 (Schedule)** — 主线程中初始化 Job 结构体的代码，修改传入 Job 的参数（如速度乘数）
+2. **Job 完成后的数据同步 (Complete)** — LateUpdate 中将 Job 结果应用回 Transform 的系统，在结果应用前修正
+3. **Job 外围的管理类** — 如 FishManager、SpawnSystem 等 MonoBehaviour，这些仍然是普通 IL2CPP 方法
+
+### 识别方法
+
+```bash
+# 在反编译代码中搜索 Job 相关模式
+grep -r "IJob\|IJobParallelFor\|JobHandle\|Schedule(" decompiled/ --include="*.cs"
+grep -r "NativeArray\|NativeList" decompiled/ --include="*.cs"
+```
+
+---
+
+## 7. 官方立场与分发注意事项
+
+- **MINTROCKET 官方反对 mod** — Discord 规则明确禁止讨论 Hack/Cheats/Mods 和解包游戏数据
+- **无 Steam 创意工坊支持**
+- **分发渠道**：Nexus Mods（主要）、GitHub（源码与技术交流）
+- **2026 DLC "Into the Jungle"** — 大更新会重编译 GameAssembly.dll，所有函数偏移变化，interop DLL 需重新生成
+  - 我们的 Harmony patch 基于方法签名（`typeof(ClassName)` + `nameof(Method)`）而非硬编码地址，抗更新能力较强
+  - 但类/方法重命名或签名变化仍会导致 patch 失效，需重新适配
+
+---
+
+## 8. 场景对象层级与实体结构
+
+### 潜水场景层级
+
+潜水场景中，鱼、宝箱等实体都位于 `RuntimeObjects` 容器下：
+
+```
+RuntimeObjects/
+├── Boid_SA_2010002_ClownFish_3(Clone)/     ← 鱼群 (BoidGroup)
+│   ├── SA_2010002_ClownFish/               ← 单条鱼 (FishInteractionBody)
+│   ├── SA_2010002_ClownFish (1)/
+│   └── SA_2010002_ClownFish (2)/
+├── Thresher_Shark/                          ← 单体鱼分配器
+│   └── SA_2010132_Thresher_Shark01(Clone)/  ← 攻击性鱼
+├── Stellate_Puffer/                         ← 单体鱼分配器
+│   └── SA_2010027_Stellate_Puffer(Clone)/
+├── Allocator__Moray_Eel02_R/               ← 固定位置鱼分配器
+│   └── SA_2010054_Moray_Eel02/
+├── SeahorseSpawner_Seahorse_15/            ← 海马生成器
+│   └── SA_2012015_Racing_Seahorse_15(Clone)/
+├── Chest_O2(Clone)                          ← 氧气宝箱
+├── Chest_Item(Clone)                        ← 道具宝箱
+├── Chest_Weapon(Clone)                      ← 武器宝箱
+├── Chest_Rock(Clone)                        ← 岩石宝箱
+├── Chest_IngredientPot_A(Clone)            ← 食材罐
+├── Loot_StarFish004(Clone)                 ← 掉落物品
+└── ...
+```
+
+### 鱼的组件结构
+
+**普通群体鱼**（Boid）：
+```
+SA_2010002_ClownFish:
+  Transform, Rigidbody2D, Damageable, FishInteractionBody, BuffHandler,
+  CapsuleCollider2D, SABaseFishSystem, FishSubSMBManager, FindTargetHelper,
+  Seeker, SACustomMovement, ActivityAreaManager, BoidsSmallGroupAI,
+  Moveable2D, AwayFromTarget, AIDatasManager, RotableByLook2D, ...
+  └── Body: [Transform]
+  └── Direction: [Transform]
+```
+
+**攻击性鱼**（鲨鱼、河豚、海鳗等）：
+```
+SA_2010132_Thresher_Shark01(Clone):
+  Transform, Rigidbody2D, Damageable, FishInteractionBody, BuffHandler,
+  SABaseFishSystem, Painable, SkillDescInitializer, FishSubSMBManager,
+  FindTargetHelper, DefaultSprintable, AIDatasManager, Rotable, ...
+  ★ 没有 AwayFromTarget 和 BoidsSmallGroupAI
+  └── Body: [Transform, SpecialAttackerBodyController]
+  └── Damageables: [Transform, DamagerAbility, DamagerByDamageables]
+  └── Damagers: [Transform]
+  └── TailSpearDamager: [Transform, BoxCollider2D, BodyDamager]
+```
+
+### 区分攻击性鱼的方法
+
+**推荐**：检查 `DR.AI.AwayFromTarget` 组件的有无
+```csharp
+bool isAggressive = fish.GetComponent<DR.AI.AwayFromTarget>() == null;
+```
+
+| 鱼类型 | AwayFromTarget | 额外攻击组件 |
+|--------|----------------|-------------|
+| Boid 群鱼（小丑鱼等） | ✅ 有 | 无 |
+| 鲨鱼 (Thresher_Shark) | ❌ 无 | Painable, DefaultSprintable, BodyDamager |
+| 河豚 (Stellate_Puffer) | ❌ 无 | Damager, BodyDamager |
+| 海鳗 (Moray_Eel) | ❌ 无 | Attackable |
+
+### 宝箱类型识别
+
+通过 `gameObject.name` 区分：
+- `Chest_O2(Clone)` — 氧气宝箱
+- `Chest_Item(Clone)` — 道具宝箱
+- `Chest_Weapon(Clone)` — 武器宝箱
+- `Chest_Rock(Clone)` — 岩石宝箱
+- `Chest_IngredientPot_A/B/C(Clone)` — 食材罐
+
+### 关卡边界
+
+- `InGameManager.GetBoundary()` — 返回关卡完整边界 `Bounds`（推荐）
+- `InGameManager.CurrentCameraBounds` — 备选
+- `OrthographicCameraManager.m_BottomLeftPivot/m_TopRightPivot` — **不可靠**，在 `CalculateCamerabox()` 调用前为 (0,0)
+
+### IL2CPP 命名空间陷阱
+
+运行时组件名不一定与 interop DLL 中的完全限定名匹配。例如：
+- 运行时报告 `AwayFromTarget` → 实际是 `DR.AI.AwayFromTarget`
+- 搜索时用 `ilspycmd -l type dll | grep -i "ClassName"` 可找到完整命名空间
+- `decompiled/` 目录中可能找不到某些类（反编译失败），但 interop DLL 中仍存在
+
+---
+
+## 9. 参考 Mod 项目
+
+| 项目 | 作者 | 功能 | 参考价值 |
+|------|------|------|----------|
+| [dave-the-diver-mods](https://github.com/devopsdinosaur/dave-the-diver-mods) | devopsdinosaur | 无限氧气、无敌、自动拾取、加速 | Hook 点选择、BepInEx 6 项目结构、ConfigFile 用法 |
+| [DaveDiverMap](https://github.com/qe201020335/DaveDiverMap) | qe201020335 | 屏幕地图覆盖 | 运行时 UI 构建、坐标系统读取、Canvas 动态创建 |
