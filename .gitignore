@@ -12,8 +12,9 @@ GamePath.user.props
 *.suo
 *.DotSettings.user
 
-# Compiled output
+# Compiled output (lib/ DLLs tracked via Git LFS)
 *.dll
+!lib/**/*.dll
 *.pdb
 *.exe
 *.nupkg

@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build
+        run: dotnet build src/DaveDiverExpansion/DaveDiverExpansion.csproj -c Release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          $dir = "package/BepInEx/plugins/DaveDiverExpansion"
+          New-Item -ItemType Directory -Path $dir -Force
+          Copy-Item "src/DaveDiverExpansion/bin/Release/net480/DaveDiverExpansion.dll" $dir
+          Compress-Archive -Path "package/*" -DestinationPath "DaveDiverExpansion-$version.zip"
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DaveDiverExpansion-*.zip
+          generate_release_notes: true

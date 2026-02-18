@@ -8,26 +8,34 @@
     <TargetFramework>net480</TargetFramework>
     <Platforms>AnyCPU</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <BepInExPath>$(GamePath)\BepInEx</BepInExPath>
-    <InteropPath>$(BepInExPath)\interop</InteropPath>
+  </PropertyGroup>
+
+  <!-- Resolve reference DLL paths: GamePath (local dev) or lib/ fallback (CI) -->
+  <PropertyGroup Condition="'$(GamePath)' != ''">
+    <BepInExPath>$(GamePath)\BepInEx\core</BepInExPath>
+    <InteropPath>$(GamePath)\BepInEx\interop</InteropPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(GamePath)' == ''">
+    <BepInExPath>$(MSBuildThisFileDirectory)lib\bepinex</BepInExPath>
+    <InteropPath>$(MSBuildThisFileDirectory)lib\interop</InteropPath>
   </PropertyGroup>
 
   <!-- BepInEx core references -->
   <ItemGroup Label="BepInEx">
     <Reference Include="0Harmony">
-      <HintPath>$(BepInExPath)\core\0Harmony.dll</HintPath>
+      <HintPath>$(BepInExPath)\0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="BepInEx.Core">
-      <HintPath>$(BepInExPath)\core\BepInEx.Core.dll</HintPath>
+      <HintPath>$(BepInExPath)\BepInEx.Core.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="BepInEx.Unity.IL2CPP">
-      <HintPath>$(BepInExPath)\core\BepInEx.Unity.IL2CPP.dll</HintPath>
+      <HintPath>$(BepInExPath)\BepInEx.Unity.IL2CPP.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Il2CppInterop.Runtime">
-      <HintPath>$(BepInExPath)\core\Il2CppInterop.Runtime.dll</HintPath>
+      <HintPath>$(BepInExPath)\Il2CppInterop.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
