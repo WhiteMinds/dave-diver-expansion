@@ -7,7 +7,7 @@ namespace DaveDiverExpansion.Features;
 
 /// <summary>
 /// Automatically picks up nearby items during diving.
-/// Scans for collectible objects within a configurable radius and triggers their pickup.
+/// Uses Harmony-patched instance registries instead of FindObjectsOfType for performance.
 /// </summary>
 public static class AutoPickup
 {
@@ -20,9 +20,14 @@ public static class AutoPickup
     // Track objects being destroyed this frame to avoid double-pickup
     private static readonly HashSet<GameObject> _pendingDestroy = new();
 
-    // Throttle FindObjectsOfType scans (same pattern as DiveMap)
-    private const float ScanInterval = 0.2f;
-    private static float _scanTimer;
+    // Instance registries populated by Harmony patches on lifecycle methods
+    internal static readonly HashSet<FishInteractionBody> AllFish = new();
+    internal static readonly HashSet<PickupInstanceItem> AllItems = new();
+    internal static readonly HashSet<InstanceItemChest> AllChests = new();
+
+    // Periodic null purge for sets without OnDisable cleanup
+    private const float PurgeInterval = 2f;
+    private static float _purgeTimer;
 
     public static void Init(BepInEx.Configuration.ConfigFile config)
     {
@@ -52,9 +57,14 @@ public static class AutoPickup
     {
         if (!Enabled.Value) return;
 
-        _scanTimer += Time.deltaTime;
-        if (_scanTimer < ScanInterval) return;
-        _scanTimer = 0f;
+        // Periodically purge destroyed objects from registries without OnDisable
+        _purgeTimer += Time.deltaTime;
+        if (_purgeTimer >= PurgeInterval)
+        {
+            _purgeTimer = 0f;
+            AllFish.RemoveWhere(f => f == null);
+            AllChests.RemoveWhere(c => c == null);
+        }
 
         var playerPos = player.transform.position;
         var radius = PickupRadius.Value;
@@ -65,7 +75,7 @@ public static class AutoPickup
         // Fish
         if (AutoPickupFish.Value)
         {
-            foreach (var fish in Object.FindObjectsOfType<FishInteractionBody>())
+            foreach (var fish in AllFish)
             {
                 if (fish == null || fish.gameObject == null) continue;
                 if (_pendingDestroy.Contains(fish.gameObject)) continue;
@@ -84,7 +94,7 @@ public static class AutoPickup
         // Items
         if (AutoPickupItems.Value)
         {
-            foreach (var item in Object.FindObjectsOfType<PickupInstanceItem>())
+            foreach (var item in AllItems)
             {
                 if (item == null || item.gameObject == null) continue;
                 if (_pendingDestroy.Contains(item.gameObject)) continue;
@@ -111,7 +121,7 @@ public static class AutoPickup
         // Chests
         if (AutoOpenChests.Value)
         {
-            foreach (var chest in Object.FindObjectsOfType<InstanceItemChest>())
+            foreach (var chest in AllChests)
             {
                 if (chest == null || chest.gameObject == null) continue;
                 if (_pendingDestroy.Contains(chest.gameObject)) continue;
@@ -125,6 +135,34 @@ public static class AutoPickup
         }
     }
 }
+
+// --- Instance registry patches ---
+
+[HarmonyPatch(typeof(PickupInstanceItem), nameof(PickupInstanceItem.OnEnable))]
+static class PickupItemOnEnablePatch
+{
+    static void Postfix(PickupInstanceItem __instance) => AutoPickup.AllItems.Add(__instance);
+}
+
+[HarmonyPatch(typeof(PickupInstanceItem), nameof(PickupInstanceItem.OnDisable))]
+static class PickupItemOnDisablePatch
+{
+    static void Postfix(PickupInstanceItem __instance) => AutoPickup.AllItems.Remove(__instance);
+}
+
+[HarmonyPatch(typeof(InstanceItemChest), nameof(InstanceItemChest.OnEnable))]
+static class ChestOnEnablePatch
+{
+    static void Postfix(InstanceItemChest __instance) => AutoPickup.AllChests.Add(__instance);
+}
+
+[HarmonyPatch(typeof(FishInteractionBody), nameof(FishInteractionBody.Awake))]
+static class FishAwakePatch
+{
+    static void Postfix(FishInteractionBody __instance) => AutoPickup.AllFish.Add(__instance);
+}
+
+// --- Auto-pickup trigger patch ---
 
 [HarmonyPatch(typeof(PlayerCharacter), nameof(PlayerCharacter.Update))]
 public static class AutoPickupPatch
