@@ -7,6 +7,10 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 - **Auto Pickup** — Automatically collects nearby fish, items, and chests while diving
   - Configurable pickup radius
   - Toggle fish / items / chests independently
+- **Dive Map** — Minimap HUD and full-level map overlay while diving
+  - Minimap in the top-right corner, follows the player with configurable zoom
+  - Press M to toggle a full-level enlarged map in the center of the screen
+  - Color-coded markers: escape pods (green), fish (blue), aggressive fish (red), items (yellow), chests (orange), O2 chests (cyan)
 - **In-Game Config Panel** — Press F1 to open a settings UI overlay
   - Auto-discovers all config entries from all features
   - Toggle, slider, and text input controls based on value type
@@ -37,13 +41,29 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 
 #### Settings
 
+**AutoPickup**
+
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `Enabled` | `true` | Master toggle for auto-pickup |
-| `AutoPickupFish` | `true` | Auto-collect dead fish |
+| `AutoPickupFish` | `false` | Auto-collect dead fish |
 | `AutoPickupItems` | `true` | Auto-collect dropped items |
-| `AutoOpenChests` | `true` | Auto-open treasure chests |
-| `PickupRadius` | `5.0` | Collection radius (game units) |
+| `AutoOpenChests` | `false` | Auto-open treasure chests |
+| `PickupRadius` | `1.0` | Collection radius (game units) |
+
+**DiveMap**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Enabled` | `true` | Enable the dive map HUD |
+| `ToggleKey` | `M` | Key to toggle the enlarged map view |
+| `ShowEscapePods` | `true` | Show escape pod/mirror markers |
+| `ShowFish` | `false` | Show fish markers |
+| `ShowItems` | `false` | Show item markers |
+| `ShowChests` | `false` | Show chest markers |
+| `MapSize` | `0.3` | Minimap size (fraction of screen height) |
+| `MapOpacity` | `0.8` | Map opacity |
+| `MiniMapZoom` | `3.0` | Minimap zoom level |
 
 ---
 

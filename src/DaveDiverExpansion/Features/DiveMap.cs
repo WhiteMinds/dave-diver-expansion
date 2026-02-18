@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using BepInEx.Configuration;
+using DaveDiverExpansion.Helpers;
 using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
 using UnityEngine.UI;
@@ -503,7 +504,7 @@ public class DiveMapBehaviour : MonoBehaviour
         {
             try
             {
-                foreach (var item in Object.FindObjectsOfType<PickupInstanceItem>())
+                foreach (var item in EntityRegistry.AllItems)
                 {
                     if (item == null) continue;
                     var pos = item.transform.position;
@@ -517,7 +518,7 @@ public class DiveMapBehaviour : MonoBehaviour
         {
             try
             {
-                foreach (var chest in Object.FindObjectsOfType<InstanceItemChest>())
+                foreach (var chest in EntityRegistry.AllChests)
                 {
                     if (chest == null) continue;
                     var pos = chest.transform.position;
@@ -537,7 +538,7 @@ public class DiveMapBehaviour : MonoBehaviour
         {
             try
             {
-                foreach (var fish in Object.FindObjectsOfType<FishInteractionBody>())
+                foreach (var fish in EntityRegistry.AllFish)
                 {
                     if (fish == null) continue;
                     if (fish.transform.position == Vector3.zero) continue;

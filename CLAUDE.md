@@ -164,10 +164,11 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 src/DaveDiverExpansion/
 ├── Plugin.cs                # BepInEx 入口，继承 BasePlugin，初始化 Harmony
 ├── Features/
-│   ├── AutoPickup.cs        # 自动拾取功能 + Harmony 补丁
+│   ├── AutoPickup.cs        # 自动拾取功能（读取 EntityRegistry）
 │   ├── ConfigUI.cs          # uGUI 游戏内配置面板 (F1 切换)
 │   └── DiveMap.cs           # 潜水地图 HUD (M 键切换，Camera→RenderTexture 方案)
 └── Helpers/
+    ├── EntityRegistry.cs    # 共享实体注册表 + 生命周期 Harmony 补丁
     ├── I18n.cs              # 国际化工具 + 游戏语言缓存 Harmony 补丁
     └── Il2CppHelper.cs      # IL2CPP 反射工具
 ```
@@ -175,8 +176,9 @@ src/DaveDiverExpansion/
 - `Plugin.cs` — 入口点，`Load()` 中按顺序初始化各功能并调用 `_harmony.PatchAll()`
 - `Features/` — 每个功能独立为一个文件，包含:
   - 静态类定义 `ConfigEntry` 绑定 + `Init(ConfigFile)` 方法
-  - 同文件内的 `[HarmonyPatch]` 类
-- `Helpers/` — 共享工具方法
+  - 功能专属的 `[HarmonyPatch]` 类
+- `Helpers/` — 共享工具方法和基础设施补丁
+  - `EntityRegistry` — 通过 Harmony 生命周期补丁维护 `AllFish`/`AllItems`/`AllChests` 注册表，自带 `Purge()` 清理机制，供 AutoPickup 和 DiveMap 共享读取
 
 ## 构建配置
 
@@ -215,8 +217,9 @@ src/DaveDiverExpansion/
 - 技术方案：独立正交 Camera → RenderTexture → RawImage
   - Camera 必须 `CopyFrom(mainCam)` 继承 URP 管线设置
   - 关卡边界从 `InGameManager.GetBoundary()` 获取（备选 `CurrentCameraBounds`）
-- **性能优化：扫描与重定位分离**
-  - 扫描阶段（`FindObjectsOfType`，每 0.5s）：发现新实体，缓存引用/坐标
+- **性能优化：EntityRegistry + 扫描与重定位分离**
+  - 实体来源：从 `EntityRegistry.AllFish`/`AllItems`/`AllChests` 读取（Harmony 生命周期补丁维护，无 `FindObjectsOfType`）
+  - 扫描阶段（每 1s）：遍历注册表，过滤已打开宝箱，缓存引用/坐标
   - 重定位阶段（每帧）：从缓存读取坐标，更新 UI 标记位置
   - 逃生点：不移动，进场景只扫描一次
   - 箱子/物品：不移动，缓存 `Vector3` 坐标
