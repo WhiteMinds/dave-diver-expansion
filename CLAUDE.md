@@ -32,6 +32,13 @@ dotnet add src/DaveDiverExpansion/DaveDiverExpansion.csproj package <PackageName
 
 # 安装 BepInEx 到游戏目录
 bash scripts/setup-bepinex.sh
+
+# 发布新版本（自动触发 GitHub Actions 构建 + Release）
+git tag v0.2.0
+git push origin main --tags
+
+# 游戏更新后，同步引用 DLL 到 lib/（供 CI 构建使用）
+bash scripts/update-lib.sh
 ```
 
 ## 反编译游戏代码（ilspycmd）
@@ -161,16 +168,24 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 ## 架构
 
 ```
-src/DaveDiverExpansion/
-├── Plugin.cs                # BepInEx 入口，继承 BasePlugin，初始化 Harmony
-├── Features/
-│   ├── AutoPickup.cs        # 自动拾取功能（读取 EntityRegistry）
-│   ├── ConfigUI.cs          # uGUI 游戏内配置面板 (F1 切换)
-│   └── DiveMap.cs           # 潜水地图 HUD (M 键切换，Camera→RenderTexture 方案)
-└── Helpers/
-    ├── EntityRegistry.cs    # 共享实体注册表 + 生命周期 Harmony 补丁
-    ├── I18n.cs              # 国际化工具 + 游戏语言缓存 Harmony 补丁
-    └── Il2CppHelper.cs      # IL2CPP 反射工具
+├── .github/workflows/release.yml  # CI: v* tag → 构建 → GitHub Release
+├── .gitattributes                 # Git LFS 追踪 lib/**/*.dll
+├── lib/
+│   ├── bepinex/                   # BepInEx 核心 DLL（4 文件，Git LFS）
+│   └── interop/                   # 游戏 interop DLL（10 文件，Git LFS）
+├── scripts/
+│   ├── setup-bepinex.sh           # 安装 BepInEx 6 BE
+│   └── update-lib.sh              # 从游戏目录更新 lib/ 引用 DLL
+└── src/DaveDiverExpansion/
+    ├── Plugin.cs                  # BepInEx 入口，继承 BasePlugin，初始化 Harmony
+    ├── Features/
+    │   ├── AutoPickup.cs          # 自动拾取功能（读取 EntityRegistry）
+    │   ├── ConfigUI.cs            # uGUI 游戏内配置面板 (F1 切换)
+    │   └── DiveMap.cs             # 潜水地图 HUD (M 键切换，Camera→RenderTexture 方案)
+    └── Helpers/
+        ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期 Harmony 补丁
+        ├── I18n.cs                # 国际化工具 + 游戏语言缓存 Harmony 补丁
+        └── Il2CppHelper.cs        # IL2CPP 反射工具
 ```
 
 - `Plugin.cs` — 入口点，`Load()` 中按顺序初始化各功能并调用 `_harmony.PatchAll()`
@@ -186,6 +201,62 @@ src/DaveDiverExpansion/
 - `GamePath.user.props` — **不入 Git**，仅本地，定义 `$(GamePath)` 变量
 - `.csproj` — 极简，核心配置继承自 `Directory.Build.props`
 - 新增 interop 引用时，在 `Directory.Build.props` 的对应 `<ItemGroup>` 中添加 `<Reference>`
+
+### 引用 DLL 解析优先级
+
+`Directory.Build.props` 使用条件属性组解析引用 DLL 路径：
+1. **有 GamePath**（本地开发）：从 `$(GamePath)\BepInEx\core\` 和 `$(GamePath)\BepInEx\interop\` 读取
+2. **无 GamePath**（CI 构建）：从项目 `lib/bepinex/` 和 `lib/interop/` 读取
+
+### 更新 lib/ 引用 DLL
+
+游戏更新后，interop DLL 可能变化，需要同步到 `lib/`：
+
+```bash
+bash scripts/update-lib.sh   # 从游戏目录复制 14 个 DLL 到 lib/
+git add lib/                  # Git LFS 追踪
+git commit -m "Update reference DLLs for game version X.Y.Z"
+```
+
+## CI/CD
+
+### GitHub Actions Release 工作流
+
+- 配置文件：`.github/workflows/release.yml`
+- 触发条件：推送 `v*` 标签（如 `v0.1.0`）
+- 运行环境：`windows-latest`
+- 步骤：checkout (含 LFS) → dotnet build Release → 打包 zip → 创建 GitHub Release
+- 需要 `permissions: contents: write` 权限（已配置）
+
+### 发布新版本
+
+```bash
+# 1. 更新 Plugin.cs 中的 PLUGIN_VERSION
+# 2. 提交更改
+git commit -m "Bump version to 0.2.0"
+# 3. 打标签并推送
+git tag v0.2.0
+git push origin main --tags
+# 4. GitHub Actions 自动构建并创建 Release（含 DaveDiverExpansion-v0.2.0.zip）
+# 5.（可选）手动上传 zip 到 NexusMods
+```
+
+### Release zip 结构
+
+```
+DaveDiverExpansion-v0.2.0.zip
+└── BepInEx/plugins/DaveDiverExpansion/
+    └── DaveDiverExpansion.dll
+```
+用户解压到游戏根目录即可。
+
+### Git LFS
+
+14 个引用 DLL（~56MB）通过 Git LFS 存储在 `lib/` 目录下：
+- `lib/bepinex/` — 4 个 BepInEx 核心 DLL（0Harmony, BepInEx.Core, BepInEx.Unity.IL2CPP, Il2CppInterop.Runtime）
+- `lib/interop/` — 10 个游戏 interop DLL（Assembly-CSharp, UnityEngine 系列等）
+- `.gitattributes` 配置 `lib/**/*.dll filter=lfs diff=lfs merge=lfs -text`
+- `.gitignore` 中 `*.dll` 后添加 `!lib/**/*.dll` 例外
 
 ## IL2CPP 注意事项
 

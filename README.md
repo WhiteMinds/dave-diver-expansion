@@ -26,8 +26,8 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 
 ### 2. Install the Mod
 
-1. Download `DaveDiverExpansion.dll` from [Releases](../../releases)
-2. Place it in `Dave the Diver\BepInEx\plugins\DaveDiverExpansion\`
+1. Download `DaveDiverExpansion-vX.Y.Z.zip` from [Releases](https://github.com/WhiteMinds/dave-diver-expansion/releases)
+2. Extract the zip into your game folder (it creates `BepInEx\plugins\DaveDiverExpansion\`)
 3. Launch the game
 
 ### 3. Configuration
@@ -79,8 +79,9 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 ### Getting Started
 
 ```bash
-# Clone
-git clone https://github.com/YOUR_USERNAME/dave-diver-expansion.git
+# Clone (requires Git LFS for reference DLLs)
+git lfs install
+git clone https://github.com/WhiteMinds/dave-diver-expansion.git
 cd dave-diver-expansion
 
 # Create local game path config (edit the path to match your installation)
@@ -104,9 +105,13 @@ dotnet build src/DaveDiverExpansion/DaveDiverExpansion.csproj
 ### Project Structure
 
 ```
+.github/workflows/release.yml     # CI: build + GitHub Release on v* tags
 Directory.Build.props              # Build config: references, auto-deploy (in git)
 GamePath.user.props                # Your local game path (NOT in git)
-scripts/setup-bepinex.sh           # Auto-download & install BepInEx
+lib/                               # Reference DLLs for CI builds (Git LFS)
+scripts/
+  setup-bepinex.sh                 # Auto-download & install BepInEx
+  update-lib.sh                    # Copy reference DLLs from game dir to lib/
 src/DaveDiverExpansion/
   Plugin.cs                        # BepInEx entry point (BasePlugin)
   Features/                        # Feature modules (config + Harmony patches per file)
@@ -148,6 +153,26 @@ ilspycmd -t PlayerCharacter "<GamePath>/BepInEx/interop/Assembly-CSharp.dll" | g
 4. Add any new interop references to `Directory.Build.props`
 5. `dotnet build` → launch game → verify in logs
 
+## Releasing
+
+```bash
+# 1. Update PLUGIN_VERSION in Plugin.cs
+# 2. Commit and tag
+git tag v0.2.0
+git push origin main --tags
+# 3. GitHub Actions builds and creates a Release with the zip automatically
+# 4. (Optional) Upload the zip to NexusMods manually
+```
+
+After a game update, refresh the reference DLLs used for CI builds:
+
+```bash
+bash scripts/update-lib.sh
+git add lib/
+git commit -m "Update reference DLLs for game version X.Y.Z"
+git push
+```
+
 ## Technical Notes
 
 - Dave the Diver uses **IL2CPP** compilation (Unity 6000.0.52f1), not Mono
@@ -155,6 +180,7 @@ ilspycmd -t PlayerCharacter "<GamePath>/BepInEx/interop/Assembly-CSharp.dll" | g
 - The plugin targets `net480` and is loaded by BepInEx's .NET 6 runtime via compatibility layer
 - Harmony patches target interop wrapper methods (use `typeof(GameClass)` directly)
 - All interaction classes (fish, items, chests) use `CheckAvailableInteraction()` + `SuccessInteract()` pattern
+- CI builds use reference DLLs from `lib/` (tracked via Git LFS) when `GamePath` is not set
 - Reference: [devopsdinosaur/dave-the-diver-mods](https://github.com/devopsdinosaur/dave-the-diver-mods)
 
 ## License
