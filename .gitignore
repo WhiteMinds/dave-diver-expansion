@@ -30,5 +30,11 @@ packages/
 # Decompiled game code (generated locally)
 decompiled/
 
+# Node.js
+node_modules/
+
+# Temp files
+.tmp/
+
 # Claude
 .claude/settings.local.json

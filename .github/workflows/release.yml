@@ -36,3 +36,14 @@ jobs:
         with:
           files: DaveDiverExpansion-*.zip
           generate_release_notes: true
+
+      - name: Upload to NexusMods
+        if: vars.NEXUSMODS_FILE_ID != ''
+        uses: Nexus-Mods/upload-action@4593698b
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          game_domain_name: davethediver
+          file_id: ${{ vars.NEXUSMODS_FILE_ID }}
+          filename: DaveDiverExpansion-${{ github.ref_name }}.zip
+          version: ${{ github.ref_name }}
+          fileCategory: main

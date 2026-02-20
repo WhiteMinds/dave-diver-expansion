@@ -1,5 +1,8 @@
 # DaveDiverExpansion
 
+[![NexusMods](https://img.shields.io/badge/NexusMods-DaveDiverExpansion-orange?logo=nexusmods)](https://www.nexusmods.com/davethediver/mods/20)
+[![GitHub Release](https://img.shields.io/github/v/release/WhiteMinds/dave-diver-expansion)](https://github.com/WhiteMinds/dave-diver-expansion/releases)
+
 A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 
 ## Features
@@ -18,17 +21,11 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 
 ## Installation (Players)
 
-### 1. Install BepInEx 6
-
 1. Download [BepInEx 6 Bleeding Edge](https://builds.bepinex.dev/projects/bepinex_be) — select **Unity.IL2CPP-win-x64**
 2. Extract to your game folder: `Steam\steamapps\common\Dave the Diver\`
-3. Launch the game once and close it (BepInEx generates required files on first run)
-
-### 2. Install the Mod
-
-1. Download `DaveDiverExpansion-vX.Y.Z.zip` from [Releases](https://github.com/WhiteMinds/dave-diver-expansion/releases)
-2. Extract the zip into your game folder (it creates `BepInEx\plugins\DaveDiverExpansion\`)
-3. Launch the game
+3. Download `DaveDiverExpansion-vX.Y.Z.zip` from [NexusMods](https://www.nexusmods.com/davethediver/mods/20) or [GitHub Releases](https://github.com/WhiteMinds/dave-diver-expansion/releases)
+4. Extract the zip into the same game folder (it creates `BepInEx\plugins\DaveDiverExpansion\`)
+5. Launch the game
 
 ### 3. Configuration
 
@@ -160,9 +157,17 @@ ilspycmd -t PlayerCharacter "<GamePath>/BepInEx/interop/Assembly-CSharp.dll" | g
 # 2. Commit and tag
 git tag v0.2.0
 git push origin main --tags
-# 3. GitHub Actions builds and creates a Release with the zip automatically
-# 4. (Optional) Upload the zip to NexusMods manually
+# 3. GitHub Actions builds and creates a Release with the zip
+#    and auto-uploads to NexusMods (if NEXUSMODS_FILE_ID is set)
 ```
+
+### NexusMods Auto-Upload
+
+The CI workflow automatically uploads new versions to NexusMods when:
+1. The repository variable `NEXUSMODS_FILE_ID` is set (the numeric file ID from NexusMods)
+2. The repository secret `NEXUSMODS_API_KEY` is configured
+
+Set these in GitHub repo Settings > Secrets and variables > Actions.
 
 After a game update, refresh the reference DLLs used for CI builds:
 

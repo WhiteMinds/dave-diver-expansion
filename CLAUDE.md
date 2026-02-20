@@ -168,8 +168,13 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 ## 架构
 
 ```
-├── .github/workflows/release.yml  # CI: v* tag → 构建 → GitHub Release
+├── .github/workflows/release.yml  # CI: v* tag → 构建 → GitHub Release → NexusMods
 ├── .gitattributes                 # Git LFS 追踪 lib/**/*.dll
+├── docs/
+│   ├── nexusmods-description.bbcode   # NexusMods 页面描述模板
+│   ├── ugui-il2cpp-notes.md          # uGUI 开发踩坑记录
+│   ├── game-internals.md             # 游戏内部结构探索笔记
+│   └── divemap-perf.md               # DiveMap 性能优化笔记
 ├── lib/
 │   ├── bepinex/                   # BepInEx 核心 DLL（4 文件，Git LFS）
 │   └── interop/                   # 游戏 interop DLL（10 文件，Git LFS）
@@ -225,7 +230,7 @@ git commit -m "Update reference DLLs for game version X.Y.Z"
 - 配置文件：`.github/workflows/release.yml`
 - 触发条件：推送 `v*` 标签（如 `v0.1.0`）
 - 运行环境：`windows-latest`
-- 步骤：checkout (含 LFS) → dotnet build Release → 打包 zip → 创建 GitHub Release
+- 步骤：checkout (含 LFS) → dotnet build Release → 打包 zip → 创建 GitHub Release → 上传 NexusMods
 - 需要 `permissions: contents: write` 权限（已配置）
 
 ### 发布新版本
@@ -238,8 +243,22 @@ git commit -m "Bump version to 0.2.0"
 git tag v0.2.0
 git push origin main --tags
 # 4. GitHub Actions 自动构建并创建 Release（含 DaveDiverExpansion-v0.2.0.zip）
-# 5.（可选）手动上传 zip 到 NexusMods
+# 5. 如果配置了 NexusMods，CI 自动上传新版本到 NexusMods
 ```
+
+### NexusMods 自动上传
+
+- NexusMods 页面：https://www.nexusmods.com/davethediver/mods/20
+- Mod ID: `20` | File ID: `152` | Game domain: `davethediver`
+- CI 使用 `Nexus-Mods/upload-action@4593698b`（pin commit SHA，仍为 evaluation 阶段）
+
+**GitHub repo 需配置**（Settings > Secrets and variables > Actions）：
+- Secret: `NEXUSMODS_API_KEY`（从 https://www.nexusmods.com/users/myaccount?tab=api 生成）
+- Variable: `NEXUSMODS_FILE_ID` = `152`
+
+配置完成后，每次 `git push --tags` 会自动上传新版本到 NexusMods。
+
+**更新 NexusMods 描述**：需手动在 NexusMods 编辑页面更新（CI 不会同步描述）。
 
 ### Release zip 结构
 

@@ -1,0 +1,81 @@
+[size=4][b]DaveDiverExpansion[/b][/size]
+
+All-in-one diving enhancement mod for Dave the Diver.
+Built on BepInEx 6 + HarmonyX. Open source on [url=https://github.com/WhiteMinds/dave-diver-expansion]GitHub[/url].
+
+[size=3][b]Features[/b][/size]
+
+[b]Auto Pickup[/b]
+Automatically collects nearby fish, items, and treasure chests while diving.
+[list]
+[*]Configurable pickup radius
+[*]Toggle fish / items / chests independently
+[*]Smart filtering: skips weapons to prevent swap loops
+[/list]
+
+[b]Dive Map[/b]
+Minimap HUD and full-level map overlay while diving.
+[list]
+[*]Minimap in the top-right corner, follows the player with configurable zoom
+[*]Press [b]M[/b] to toggle a full-level enlarged map in the center of the screen
+[*]Color-coded markers: escape pods (green), fish (blue), aggressive fish (red), items (yellow), chests (orange), O2 chests (cyan)
+[/list]
+
+[b]In-Game Config Panel[/b]
+Press [b]F1[/b] to open a settings UI overlay.
+[list]
+[*]Auto-discovers all config entries from all features
+[*]Toggle, slider, dropdown, and text input controls
+[*]Changes take effect immediately
+[/list]
+
+[size=3][b]Installation[/b][/size]
+
+[list=1]
+[*]Download [url=https://builds.bepinex.dev/projects/bepinex_be]BepInEx 6 Bleeding Edge[/url] — select [b]Unity.IL2CPP-win-x64[/b]
+[*]Extract to your game folder: [font=Courier New]Steam\steamapps\common\Dave the Diver\[/font]
+[*]Download the main file from the Files tab
+[*]Extract the zip into the same game folder (it creates [font=Courier New]BepInEx\plugins\DaveDiverExpansion\[/font])
+[*]Launch the game
+[/list]
+
+[size=3][b]Configuration[/b][/size]
+
+Press [b]F1[/b] in-game to open the built-in settings panel. All settings can be adjusted live and are saved automatically.
+
+You can also edit the config file directly:
+[font=Courier New]Dave the Diver\BepInEx\config\com.davediver.expansion.cfg[/font]
+
+[size=3][b]Settings[/b][/size]
+
+[b]AutoPickup[/b]
+[list]
+[*][font=Courier New]Enabled[/font] (default: true) — Master toggle
+[*][font=Courier New]AutoPickupFish[/font] (default: false) — Auto-collect dead fish
+[*][font=Courier New]AutoPickupItems[/font] (default: true) — Auto-collect dropped items
+[*][font=Courier New]AutoOpenChests[/font] (default: false) — Auto-open treasure chests
+[*][font=Courier New]PickupRadius[/font] (default: 1.0) — Collection radius in game units
+[/list]
+
+[b]DiveMap[/b]
+[list]
+[*][font=Courier New]Enabled[/font] (default: true) — Enable the dive map HUD
+[*][font=Courier New]ToggleKey[/font] (default: M) — Key to toggle the enlarged map
+[*][font=Courier New]ShowEscapePods[/font] (default: true) — Show escape pod markers
+[*][font=Courier New]ShowFish[/font] (default: false) — Show fish markers
+[*][font=Courier New]ShowItems[/font] (default: false) — Show item markers
+[*][font=Courier New]ShowChests[/font] (default: false) — Show chest markers
+[*][font=Courier New]MapSize[/font] (default: 0.3) — Minimap size (fraction of screen height)
+[*][font=Courier New]MapOpacity[/font] (default: 0.8) — Map opacity
+[*][font=Courier New]MiniMapZoom[/font] (default: 3.0) — Minimap zoom level
+[/list]
+
+[size=3][b]Compatibility[/b][/size]
+[list]
+[*]Game version: v1.0.5.1784 (Steam)
+[*]BepInEx: 6.0.0-be.753 (IL2CPP)
+[*]Unity: 6000.0.52f1 (Unity 6)
+[/list]
+
+[size=3][b]Source Code[/b][/size]
+[url=https://github.com/WhiteMinds/dave-diver-expansion]GitHub Repository[/url] — MIT License
