@@ -26,6 +26,10 @@ public static class ConfigUI
     private static Text _titleText;
     private static bool _isVisible;
 
+    // "Press any key" listening state
+    private static ConfigEntryBase _listeningEntry;
+    private static Text _listeningText;
+
     // Track UI controls for cleanup on rebuild
     private static readonly List<GameObject> _sectionObjects = new();
 
@@ -57,6 +61,13 @@ public static class ConfigUI
     /// </summary>
     internal static void CheckToggle()
     {
+        // Key-listen mode takes priority over all hotkeys
+        if (_listeningEntry != null)
+        {
+            ProcessKeyListen();
+            return;
+        }
+
         try
         {
             if (!Input.GetKeyDown(_toggleKey.Value)) return;
@@ -256,23 +267,32 @@ public static class ConfigUI
         }
 
         // Group entries by section
-        var sections = new SortedDictionary<string, List<ConfigEntryBase>>();
+        var sections = new Dictionary<string, List<ConfigEntryBase>>();
         foreach (var kv in _configFile)
         {
             var section = kv.Key.Section;
             var entry = kv.Value;
-
-            // Skip ToggleKey entries — KeyCode enums have hundreds of values
-            // that make a dropdown unusable.
-            if (entry.Definition.Key == "ToggleKey")
-                continue;
 
             if (!sections.ContainsKey(section))
                 sections[section] = new List<ConfigEntryBase>();
             sections[section].Add(entry);
         }
 
-        foreach (var section in sections)
+        // Display in explicit order; any unknown sections appended at the end
+        var sectionOrder = new[] { "ConfigUI", "QuickSceneSwitch", "AutoPickup", "DiveMap" };
+        var ordered = new List<KeyValuePair<string, List<ConfigEntryBase>>>();
+        foreach (var name in sectionOrder)
+        {
+            if (sections.TryGetValue(name, out var list))
+                ordered.Add(new KeyValuePair<string, List<ConfigEntryBase>>(name, list));
+        }
+        foreach (var kv in sections)
+        {
+            if (Array.IndexOf(sectionOrder, kv.Key) < 0)
+                ordered.Add(kv);
+        }
+
+        foreach (var section in ordered)
         {
             // Section header
             var sectionGO = CreateUIObject("Section_" + section.Key, contentRT.gameObject);
@@ -327,6 +347,8 @@ public static class ConfigUI
             CreateFloatControl(rowGO, entry);
         else if (entry.SettingType == typeof(int))
             CreateIntControl(rowGO, entry);
+        else if (entry.SettingType == typeof(KeyCode))
+            CreateKeyCodeControl(rowGO, entry);
         else if (entry.SettingType == typeof(string))
             CreateStringControl(rowGO, entry);
         else if (entry.SettingType.IsEnum)
@@ -665,6 +687,93 @@ public static class ConfigUI
         {
             entry.BoxedValue = Enum.Parse(entry.SettingType, enumNames[idx]);
         });
+    }
+
+    private static void CreateKeyCodeControl(GameObject parent, ConfigEntryBase entry)
+    {
+        var btnGO = CreateUIObject("KeyButton", parent);
+        var btnLE = btnGO.AddComponent<LayoutElement>();
+        btnLE.flexibleWidth = 1;
+        btnLE.preferredHeight = 30;
+        var btnImg = btnGO.AddComponent<Image>();
+        btnImg.color = new Color(0.2f, 0.2f, 0.25f);
+
+        var textGO = CreateUIObject("Text", btnGO);
+        var textRT = textGO.GetComponent<RectTransform>();
+        textRT.anchorMin = Vector2.zero;
+        textRT.anchorMax = Vector2.one;
+        textRT.offsetMin = new Vector2(8, 2);
+        textRT.offsetMax = new Vector2(-8, -2);
+        var text = textGO.AddComponent<Text>();
+        text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        text.fontSize = 15;
+        text.color = new Color(0.9f, 0.9f, 0.9f);
+        text.alignment = TextAnchor.MiddleCenter;
+        text.text = entry.BoxedValue.ToString();
+
+        var btn = btnGO.AddComponent<Button>();
+        btn.targetGraphic = btnImg;
+        btn.onClick.AddListener((UnityAction)delegate
+        {
+            // Cancel any previous listening
+            if (_listeningText != null)
+                _listeningText.text = _listeningEntry?.BoxedValue.ToString() ?? "";
+
+            _listeningEntry = entry;
+            _listeningText = text;
+            text.text = I18n.T("Press a key...");
+            btnImg.color = new Color(0.3f, 0.4f, 0.6f);
+        });
+    }
+
+    private static void ProcessKeyListen()
+    {
+        try
+        {
+            if (!Input.anyKeyDown) return;
+        }
+        catch
+        {
+            return;
+        }
+
+        // ESC cancels
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            _listeningText.text = _listeningEntry.BoxedValue.ToString();
+            _listeningEntry = null;
+            _listeningText = null;
+            return;
+        }
+
+        // Find which key was pressed
+        foreach (KeyCode kc in Enum.GetValues(typeof(KeyCode)))
+        {
+            // Skip mouse buttons and None
+            if (kc == KeyCode.None || (int)kc >= 323 && (int)kc <= 329)
+                continue;
+
+            try
+            {
+                if (!Input.GetKeyDown(kc)) continue;
+            }
+            catch
+            {
+                continue;
+            }
+
+            _listeningEntry.BoxedValue = kc;
+            _listeningText.text = kc.ToString();
+
+            // Reset the button background color
+            var btnImg = _listeningText.transform.parent.GetComponent<Image>();
+            if (btnImg != null)
+                btnImg.color = new Color(0.2f, 0.2f, 0.25f);
+
+            _listeningEntry = null;
+            _listeningText = null;
+            return;
+        }
     }
 
     private static void Hide()

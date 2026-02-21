@@ -363,8 +363,10 @@ DaveDiverExpansion-v0.2.0.zip
 - 内置 **uGUI 配置面板**（`Features/ConfigUI.cs`），按 F1 打开
   - 基于 UnityEngine.UI (uGUI)，纯代码构建，零第三方依赖
   - 使用 `ClassInjector.RegisterTypeInIl2Cpp` 注册 MonoBehaviour，全场景热键检测
-  - 自动发现所有 `ConfigEntry`，按 section 分组
-  - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`enum` → Dropdown，其余 → InputField
+  - 自动发现所有 `ConfigEntry`，按自定义顺序分组显示
+  - Section 显示顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap`（硬编码在 `sectionOrder` 数组中，未列出的 section 追加到末尾）
+  - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown，其余 → InputField
+  - **KeyCode 按键绑定**：点击按钮进入监听模式（显示"请按键..."），下一次按键被捕获为新值，ESC 取消。通过 `_listeningEntry` 静态字段追踪监听状态，`ProcessKeyListen()` 在 `CheckToggle()` 中优先于所有热键处理
   - 修改立即生效，ConfigFile 自动保存
   - 第三方 ConfigManager 不可用：IMGUI 被 strip，sinai-dev 版有 Unity 6 兼容问题
   - **开发 uGUI 前必读**：[docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md)（踩坑记录）

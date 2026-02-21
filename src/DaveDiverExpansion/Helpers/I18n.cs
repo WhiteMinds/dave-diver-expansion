@@ -50,6 +50,9 @@ public static class I18n
 
         // QuickSceneSwitch entries
         ["QuickSceneSwitch"] = "快速切换场景",
+
+        // KeyCode binding
+        ["Press a key..."] = "请按键...",
     };
 
     public static ConfigEntry<ModLanguage> LanguageSetting;
