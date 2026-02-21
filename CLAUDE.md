@@ -321,19 +321,52 @@ gh run watch <run-id> --exit-status
 5. 点击 `[bbcode]` 切回 WYSIWYG 模式（让编辑器同步）
 6. 点击 "Save"
 
-**Playwright 自动化要点**（使用 `.tmp/` 下的脚本）：
+**Playwright 自动化**（一键发布脚本 `.tmp/pw-nexusmods-release.js`）：
 
+```bash
+# 完整 NexusMods 发布（上传文件 + 更新描述 + 归档旧版本）
+# 1. 先启动浏览器（后台常驻）
+cd "$SKILL_DIR" && node run.js "F:/Projects/dave-diver-expansion/.tmp/pw-launch.js" &
+# 2. 等待 CDP 就绪后执行发布脚本
+cd "$SKILL_DIR" && node run.js "F:/Projects/dave-diver-expansion/.tmp/pw-nexusmods-release.js"
+```
+
+**基础设施**：
+- Playwright Skill 目录：`$SKILL_DIR` = `C:\Users\white\.claude\plugins\cache\playwright-skill\playwright-skill\4.1.0\skills\playwright-skill`
+- 执行方式：`cd "$SKILL_DIR" && node run.js "<script-path>"`
 - Profile 目录：`.tmp/pw-nexusmods-profile`（已保存 NexusMods 登录状态）
-- 启动方式：直接启动 Chromium 进程带 `--remote-debugging-port=9222`，后续脚本通过 `chromium.connectOverCDP(wsUrl)` 连接
-- WYSIBB 编辑器的 textarea 默认隐藏，必须先点 `.modesw` 按钮切换到 BBCode 模式才能 fill
-- Select2 下拉框不能用 `selectOption`，需要 evaluate 或操作 UI
+- 启动方式：`pw-launch.js` 启动 Chromium + `--remote-debugging-port=9222`，后续脚本通过 `chromium.connectOverCDP(wsUrl)` 连接
 - 离开编辑页面会触发 `beforeunload` 对话框，需注册 `page.on('dialog')` handler
 - **绝对不要 `taskkill //IM chrome.exe`**
+
+**NexusMods 页面 DOM 选择器**（已验证，避免反复探索）：
+
+| 页面 | 选择器 | 说明 |
+|------|--------|------|
+| 文件管理页 `?step=files&id=20` | | |
+| 文件名输入 | `input[name="name"]` | 50 字符限制 |
+| 版本输入 | `input[name="file-version"]` | 50 字符限制 |
+| 更新 mod 版本 | `input#update-version` | checkbox |
+| 文件描述 | `textarea[name="brief-overview"]` | **255 字符限制** |
+| 文件上传 | `input[type="file"]` | .zip/.7z/.rar/.unrar |
+| 上传完成检测 | `input[name="file_uuid"]` 有值 | `waitForFunction` 轮询 |
+| 保存按钮 | `button#js-save-file` | |
+| 文件条目 | `#file-entry-{fileId}` | `<li>` 元素 |
+| Manage 下拉 | `#file-entry-{fileId} .drop-down .btn` | hover 展开子菜单 |
+| 归档链接 | `#file-entry-{fileId} a.archive-file` | `data-file-id` 属性 |
+| 描述编辑页 `?step=2&id=20` | | |
+| BBCode 切换 | `.modesw`（最后一个） | textarea 默认隐藏，需先点此 |
+| 描述 textarea | `textarea#mod_description` | BBCode 模式下可见 |
+| 保存按钮 | `button[type="submit"].bottom-save` | fallback: 任意可见 Save |
+
+**已知文件 ID**：
+- v0.1.0: `file_id=152` | v0.2.0: `file_id=153` | v0.3.0: `file_id=154`
+- 新上传的文件 ID = 上一个 + 1（规律未确认，以实际页面为准）
 
 ### Release zip 结构
 
 ```
-DaveDiverExpansion-v0.2.0.zip
+DaveDiverExpansion-v0.3.0.zip
 └── BepInEx/plugins/DaveDiverExpansion/
     └── DaveDiverExpansion.dll
 ```
