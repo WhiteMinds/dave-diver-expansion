@@ -255,30 +255,68 @@ git commit -m "Update reference DLLs for game version X.Y.Z"
 
 ### 发布新版本
 
+**完整发布流程**（含 GitHub Release + NexusMods 手动上传）：
+
 ```bash
 # 1. 更新 Plugin.cs 中的 PLUGIN_VERSION
-# 2. 提交更改
-git commit -m "Bump version to 0.2.0"
-# 3. 打标签并推送
-git tag v0.2.0
+# 2. 更新 docs/nexusmods-description.bbcode 中的 Changelog
+# 3. 更新 README.md Features（如有功能变化）
+# 4. 提交更改
+git commit -m "Bump version to X.Y.Z"
+# 5. 打标签并推送
+git tag vX.Y.Z
 git push origin main --tags
-# 4. GitHub Actions 自动构建并创建 Release（含 DaveDiverExpansion-v0.2.0.zip）
-# 5. 如果配置了 NexusMods，CI 自动上传新版本到 NexusMods
+# 6. 用 gh 检查 CI 状态
+gh run list --limit 3
+gh run watch <run-id> --exit-status
+# 7. CI 自动构建并创建 GitHub Release（含 DaveDiverExpansion-vX.Y.Z.zip）
+# 8. 手动上传到 NexusMods（见下方流程）
 ```
 
-### NexusMods 自动上传
+**发布时需更新的文件检查清单**：
+
+| 文件 | 内容 | 必须 |
+|------|------|------|
+| `src/.../Plugin.cs:37` | `PLUGIN_VERSION = "X.Y.Z"` | ✅ |
+| `docs/nexusmods-description.bbcode` | Changelog 区域 | ✅ |
+| `README.md` | Features 列表（如有功能变化） | 可选 |
+
+### NexusMods 手动上传
 
 - NexusMods 页面：https://www.nexusmods.com/davethediver/mods/20
-- Mod ID: `20` | File ID: `152` | Game domain: `davethediver`
-- CI 使用 `Nexus-Mods/upload-action@4593698bcd21dccdbdaf7858bdf0cb368c55e702`（pin 完整 commit SHA）
+- Mod ID: `20` | Game domain: `davethediver`
+- CI 的 `Nexus-Mods/upload-action` 目前无法使用（Upload API 处于 evaluation 阶段，账号未被授权）
 
-**GitHub repo 需配置**（Settings > Secrets and variables > Actions）：
-- Secret: `NEXUSMODS_API_KEY`（从 https://www.nexusmods.com/users/myaccount?tab=api 生成）
-- Variable: `NEXUSMODS_FILE_ID` = `152`
+**手动上传步骤**（通过 Playwright 自动化或浏览器手动操作）：
 
-配置完成后，每次 `git push --tags` 会自动上传新版本到 NexusMods。
+1. 从 GitHub Release 下载 zip：`gh release download vX.Y.Z --pattern "*.zip"`
+2. 打开 NexusMods 文件管理页：`https://www.nexusmods.com/davethediver/mods/edit/?step=files&id=20`
+3. 填写表单：
+   - File name: `DaveDiverExpansion vX.Y.Z`
+   - Version: `X.Y.Z`
+   - 勾选 "Update mod version"
+   - Category: Main Files
+   - File description: 简短版本变更摘要（**限 255 字符以内**，超出会被截断显示在文件列表中）
+   - 上传 zip 文件
+4. 点击 "Save file"
 
-**更新 NexusMods 描述**：需手动在 NexusMods 编辑页面更新（CI 不会同步描述）。
+**更新描述步骤**：
+
+1. 打开 Mod details 编辑页：`https://www.nexusmods.com/davethediver/mods/edit/?step=2&id=20`
+2. 描述编辑器使用 WYSIBB 富文本编辑器
+3. 点击工具栏最右侧的 `[bbcode]` 按钮切换到 BBCode 源码模式
+4. 用 `docs/nexusmods-description.bbcode` 的内容替换整个描述
+5. 点击 `[bbcode]` 切回 WYSIWYG 模式（让编辑器同步）
+6. 点击 "Save"
+
+**Playwright 自动化要点**（使用 `.tmp/` 下的脚本）：
+
+- Profile 目录：`.tmp/pw-nexusmods-profile`（已保存 NexusMods 登录状态）
+- 启动方式：直接启动 Chromium 进程带 `--remote-debugging-port=9222`，后续脚本通过 `chromium.connectOverCDP(wsUrl)` 连接
+- WYSIBB 编辑器的 textarea 默认隐藏，必须先点 `.modesw` 按钮切换到 BBCode 模式才能 fill
+- Select2 下拉框不能用 `selectOption`，需要 evaluate 或操作 UI
+- 离开编辑页面会触发 `beforeunload` 对话框，需注册 `page.on('dialog')` handler
+- **绝对不要 `taskkill //IM chrome.exe`**
 
 ### Release zip 结构
 
