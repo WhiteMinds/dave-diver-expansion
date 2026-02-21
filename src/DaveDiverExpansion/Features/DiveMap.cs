@@ -3,6 +3,7 @@ using BepInEx.Configuration;
 using DaveDiverExpansion.Helpers;
 using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace DaveDiverExpansion.Features;
@@ -167,6 +168,18 @@ public class DiveMapBehaviour : MonoBehaviour
                 }
             }
             catch { }
+
+            // Disable in merfolk village (has its own M-key map)
+            if (inGame)
+            {
+                try
+                {
+                    var sceneName = SceneManager.GetActiveScene().name;
+                    if (sceneName.Contains("MermanVillage") || sceneName.StartsWith("MV_"))
+                        inGame = false;
+                }
+                catch { }
+            }
 
             if (!inGame)
             {
@@ -463,7 +476,7 @@ public class DiveMapBehaviour : MonoBehaviour
 
         _playerMarker = CreateMarker("Player", Color.white, MiniMarkerPlayer);
 
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 50; i++)
         {
             var m = CreateMarker("Escape_" + i, new Color(0.2f, 0.9f, 0.3f), MiniMarkerEscape);
             m.gameObject.SetActive(false);
@@ -612,8 +625,12 @@ public class DiveMapBehaviour : MonoBehaviour
                     var pos = chest.transform.position;
                     if (pos == Vector3.zero) continue;
                     if (chest.IsOpen) continue;
-                    bool isO2 = chest.gameObject.name.Contains("O2");
-                    var color = isO2 ? new Color(0.2f, 0.85f, 1f) : new Color(1f, 0.6f, 0.2f);
+                    var chestName = chest.gameObject.name;
+                    bool isO2 = chestName.Contains("O2") || chestName.Contains("ShellFish004");
+                    bool isIngredient = chestName.Contains("IngredientPot");
+                    var color = isO2 ? new Color(0.2f, 0.85f, 1f)
+                              : isIngredient ? new Color(0.85f, 0.2f, 0.6f)
+                              : new Color(1f, 0.6f, 0.2f);
                     _staticCache.Add((pos, color));
                 }
             }

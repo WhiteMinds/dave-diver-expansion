@@ -110,9 +110,10 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `DataManager` : `Singleton<DataManager>` | 数据管理器 | `GetText(ref string textID)`（静态+实例两种） |
 | `FontManager` | 字体管理器 | `GetFont(SystemLanguage)`, `GetFontAsset(SystemLanguage)` |
 | `OrthographicCameraManager` : `Singleton<>` | 主相机管理器 | `m_Camera`（主 Camera）。注意：`m_BottomLeftPivot`/`m_TopRightPivot` 在 `CalculateCamerabox()` 前为 (0,0)，不可靠 |
-| `Interaction.Escape.EscapePodZone` | 逃生舱区域 | `transform.position`（不移动） |
-| `Interaction.Escape.EscapeMirror` | 逃生镜区域 | `transform.position`（不移动） |
-| `OxygenArea` | 氧气补充区域 | `minHP`, `chargeTime`, `isCharging`（注意：不是氧气宝箱） |
+| `Interaction.Escape.EscapePodZone` | 逃生舱区域 | `transform.position`，`OnTriggerEnter2D`，标准潜水场景约 9 个 |
+| `Interaction.Escape.EscapeMirror` | 逃生镜区域 | `transform.position`，`IsAvaiableUseMirror()`，冰川区域可能有 |
+| `OxygenArea` | 氧气补充区域 | `minHP`, `chargeTime`, `isCharging`（注意：不在宝箱上） |
+| `SceneLoader` | 场景加载器 | `k_SceneName_MermanVillage`（鲛人村场景名常量） |
 | `SABaseFishSystem` | 鱼 AI 系统基类 | 所有鱼都有此组件，存储 AI 数据 |
 | `DR.AI.AwayFromTarget` : `AIAbility` | 逃跑 AI 能力 | 非攻击性鱼有此组件；攻击性鱼没有 |
 | `SAFishData` : `ScriptableObject` | 鱼配置数据 | `AggressionType`（`FishAggressionType` 枚举）。是 ScriptableObject，不在 GameObject 上 |
@@ -325,20 +326,42 @@ DaveDiverExpansion-v0.2.0.zip
 - **大地图**：按 M 键切换，屏幕中央显示完整关卡
 - 技术方案：独立正交 Camera → RenderTexture → RawImage
   - Camera 必须 `CopyFrom(mainCam)` 继承 URP 管线设置
+  - Camera 始终 `enabled = false`，通过手动 `Camera.Render()` 控制渲染时机
   - 关卡边界从 `InGameManager.GetBoundary()` 获取（备选 `CurrentCameraBounds`）
+- **夜间头灯遮罩处理**
+  - 玩家有 3 个子对象 `HeadLightOuter_Deep/Night/Glacier`（~10x10 SpriteRenderer，Default 层，sortingLayer=Player）
+  - 这些大面积渐变精灵会在地图上形成黑色遮罩
+  - `FindObjectsOfType<CharacterHeadLight>()` 在运行时返回 0（组件不在玩家身上）
+  - 解决方案：扫描玩家子对象找 `HeadLightOuter*` 前缀的 Renderer，手动 Render 前禁用、Render 后恢复
+  - **不能用 culling mask 排除**：这些精灵在 Default 层（0），排除会隐藏整个场景
+- **场景排除**
+  - 鲛人村（`MermanVillage` / `MV_*`）：自带 M 键地图，DiveMap 在此场景自动禁用
 - **性能优化：EntityRegistry + 扫描与重定位分离**
   - 实体来源：从 `EntityRegistry.AllFish`/`AllItems`/`AllChests` 读取（Harmony 生命周期补丁维护，无 `FindObjectsOfType`）
   - 扫描阶段（每 1s）：遍历注册表，过滤已打开宝箱，缓存引用/坐标
   - 重定位阶段（每帧）：从缓存读取坐标，更新 UI 标记位置
-  - 逃生点：不移动，进场景只扫描一次
+  - 逃生点：`FindObjectsOfType<EscapePodZone/EscapeMirror>` 扫描一次（静态，不移动）
   - 箱子/物品：不移动，缓存 `Vector3` 坐标
   - 鱼：会移动，缓存 `Transform` 引用，每帧读 `position`
+- **逃生点系统**
+  - 游戏使用 `Interaction.Escape.EscapePodZone`（逃生舱）和 `Interaction.Escape.EscapeMirror`（逃生镜）
+  - 标准潜水场景（`A06_01_02`）有 9 个 EscapePodZone，0 个 EscapeMirror
+  - 深海区域同样使用 EscapePodZone（无特殊深海逃生类型）
+  - UI 标记池预分配 50 个（场景最多见 9 个，留余量）
 - **标记颜色**
   - 玩家：白色 | 逃生点：绿色 | 鱼：蓝色 | 攻击性鱼：红色
-  - 物品：黄色 | 宝箱：橙色 | 氧气宝箱（`Chest_O2`）：青色
+  - 物品：黄色 | 宝箱：橙色 | 氧气宝箱：青色 | 食材罐：紫红色
+- **宝箱 prefab 名称分类**
+  - `Chest_O2(Clone)` — 浅海氧气宝箱
+  - `Loot_ShellFish004(Clone)` — 深海氧气宝箱（也是 O2）
+  - `Chest_Item(Clone)` — 普通物品箱 | `Chest_Weapon(Clone)` — 武器箱
+  - `Chest_IngredientPot_A/B/C(Clone)` — 食材罐
+  - `Chest_Rock(Clone)` — 岩石箱 | `Quest_Drone_*_Box` — 任务箱
+  - `OxygenArea` 组件不在宝箱上（所有宝箱 `hasOxygenArea=False`），不能用于检测 O2 箱
 - **攻击性鱼检测**：`fish.GetComponent<DR.AI.AwayFromTarget>() == null`
   - 普通鱼有 `AwayFromTarget` 组件（遇敌逃跑），攻击性鱼没有
   - 注意 `AwayFromTarget` 在命名空间 `DR.AI` 下
+- Config: Enabled, ToggleKey(M), ShowEscapePods, ShowFish, ShowItems, ShowChests, MapSize, MapOpacity, MiniMapZoom
 
 ## 国际化 (i18n)
 
