@@ -21,6 +21,11 @@ public static class AutoPickup
     // Track objects being destroyed this frame to avoid double-pickup
     private static readonly HashSet<GameObject> _pendingDestroy = new();
 
+    // Suppress pickup when player is locked (cutscene/dialogue), with cooldown after unlock
+    private static bool _wasLocked;
+    private static float _unlockTime;
+    private const float UnlockCooldown = 1f;
+
     public static void Init(BepInEx.Configuration.ConfigFile config)
     {
         Enabled = config.Bind(
@@ -48,6 +53,26 @@ public static class AutoPickup
     internal static void TryPickupNearby(PlayerCharacter player)
     {
         if (!Enabled.Value) return;
+
+        // Skip pickup when player is in cutscene/dialogue/locked state
+        bool isLocked = player.IsActionLock || player.IsScenarioPlaying;
+        if (isLocked)
+        {
+            if (!_wasLocked)
+            {
+                Plugin.Log.LogInfo($"AutoPickup: locked (ActionLock={player.IsActionLock}, Scenario={player.IsScenarioPlaying}) — pausing");
+                _wasLocked = true;
+            }
+            return;
+        }
+        if (_wasLocked)
+        {
+            _unlockTime = Time.time;
+            _wasLocked = false;
+            Plugin.Log.LogInfo("AutoPickup: unlocked — cooldown 1s");
+        }
+        if (Time.time - _unlockTime < UnlockCooldown)
+            return;
 
         var playerPos = player.transform.position;
         var radius = PickupRadius.Value;

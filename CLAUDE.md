@@ -97,7 +97,7 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 
 | 类名 | 作用 | 关键方法 |
 |------|------|----------|
-| `PlayerCharacter` : `BaseCharacter` | 玩家角色控制器 | `Update()`, `FixedUpdate()`, `Awake()` |
+| `PlayerCharacter` : `BaseCharacter` | 玩家角色控制器 | `Update()`, `FixedUpdate()`, `Awake()`, `IsActionLock`(bool), `IsScenarioPlaying`(bool), `SetActionLock(bool)`, `SetInputLock(bool)` |
 | `FishInteractionBody` | 可交互的鱼 | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `InteractionType` |
 | `PickupInstanceItem` | 掉落物品基类（所有可拾取物品） | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `isNeedSwapSetID`, `usePreset`, `GetItemID()` |
 | `InstanceItemChest` | 宝箱 | `SuccessInteract(BaseCharacter)`, `IsOpen` |
@@ -118,6 +118,25 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `SAFishData` : `ScriptableObject` | 鱼配置数据 | `AggressionType`（`FishAggressionType` 枚举）。是 ScriptableObject，不在 GameObject 上 |
 
 > 所有交互类使用 `OnTriggerEnter2D` 检测玩家碰撞，`SuccessInteract` 触发实际拾取。
+
+### 玩家状态锁定系统
+
+游戏通过多层锁定机制控制玩家操作：
+
+| 属性/系统 | 作用 | 过场动画期间 |
+|---|---|---|
+| `PlayerCharacter.IsScenarioPlaying` | 脚本剧情（cutscene/scenario）正在播放 | ✅ **实际生效** |
+| `PlayerCharacter.IsActionLock` | 动作锁定（对话、Boss 演出等） | ❌ 过场中不一定为 true |
+| `DRInput.ActionLock_*` | 输入层锁定（Player/UI/Shooting/InGame） | 底层系统 |
+| `InputLockBundlePopup` | 统一锁定管理：`LockPlayer()`, `LockAll()` 等 | 底层系统 |
+| `TimelineController` | `LockPlayerControl()` / `UnlockPlayerControl()` | Timeline 专用 |
+| `ScenarioManager` | `SetInputLock(bool)` | Scenario 专用 |
+
+**Mod 开发建议**：检查玩家是否可操作时，用 `player.IsActionLock || player.IsScenarioPlaying` 双重判断。实测 `IsScenarioPlaying` 在大部分过场中为 true，`IsActionLock` 不一定。
+
+**AutoPickup 中的应用**：
+- **为何 skip**：过场/剧情期间自动拾取会破坏游戏体验（如 Boss 演出中意外拾取物品）
+- **为何需要 1s 冷却**：过场结束后（`IsScenarioPlaying` 变 false）如果立即拾取，会导致任务脚本 bug（如马粪海胆任务：剧情要求玩家手动拾取特定物品，过场一结束就自动拾取会跳过任务逻辑）
 
 ### PickupInstanceItem 物品系统
 

@@ -30,6 +30,9 @@ packages/
 # Decompiled game code (generated locally)
 decompiled/
 
+# AssetRipper exported assets (generated locally)
+ripped/
+
 # Node.js
 node_modules/
 
