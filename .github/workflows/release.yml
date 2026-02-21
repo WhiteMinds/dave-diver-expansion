@@ -39,7 +39,7 @@ jobs:
 
       - name: Upload to NexusMods
         if: vars.NEXUSMODS_FILE_ID != ''
-        uses: Nexus-Mods/upload-action@4593698b
+        uses: Nexus-Mods/upload-action@4593698bcd21dccdbdaf7858bdf0cb368c55e702
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           game_domain_name: davethediver

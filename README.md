@@ -10,10 +10,13 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 - **Auto Pickup** — Automatically collects nearby fish, items, and chests while diving
   - Configurable pickup radius
   - Toggle fish / items / chests independently
+  - Smart filtering: skips weapons to prevent swap loops
+  - Pauses during cutscenes/scenarios with cooldown to prevent quest-breaking pickups
 - **Dive Map** — Minimap HUD and full-level map overlay while diving
   - Minimap in the top-right corner, follows the player with configurable zoom
   - Press M to toggle a full-level enlarged map in the center of the screen
-  - Color-coded markers: escape pods (green), fish (blue), aggressive fish (red), items (yellow), chests (orange), O2 chests (cyan)
+  - Color-coded markers: escape pods (green), fish (blue), aggressive fish (red), items (yellow), chests (orange), O2 chests (cyan), ingredient pots (purple-red)
+  - Auto-disables in Merfolk Village (which has its own map)
 - **In-Game Config Panel** — Press F1 to open a settings UI overlay
   - Auto-discovers all config entries from all features
   - Toggle, slider, and text input controls based on value type

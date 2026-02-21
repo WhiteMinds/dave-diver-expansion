@@ -270,7 +270,7 @@ git push origin main --tags
 
 - NexusMods 页面：https://www.nexusmods.com/davethediver/mods/20
 - Mod ID: `20` | File ID: `152` | Game domain: `davethediver`
-- CI 使用 `Nexus-Mods/upload-action@4593698b`（pin commit SHA，仍为 evaluation 阶段）
+- CI 使用 `Nexus-Mods/upload-action@4593698bcd21dccdbdaf7858bdf0cb368c55e702`（pin 完整 commit SHA）
 
 **GitHub repo 需配置**（Settings > Secrets and variables > Actions）：
 - Secret: `NEXUSMODS_API_KEY`（从 https://www.nexusmods.com/users/myaccount?tab=api 生成）
