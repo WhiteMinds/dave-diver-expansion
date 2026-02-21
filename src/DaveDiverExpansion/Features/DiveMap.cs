@@ -104,6 +104,10 @@ public class DiveMapBehaviour : MonoBehaviour
     private List<(Transform tr, Color color)> _fishCache;    // fish move, update pos every frame
     private int _cachedEntityCount;                          // total markers in use after last scan
 
+    // Night light overlay: renderers to hide during map camera rendering
+    private List<Renderer> _nightOverlayRenderers;
+    private bool _nightOverlayScanned;
+
     // State
     private bool _showBigMap;
     private bool _lastBigMap;     // tracks mode for SetMarkerSizes dirty check
@@ -131,6 +135,7 @@ public class DiveMapBehaviour : MonoBehaviour
         if (_escapePosCache == null) _escapePosCache = new List<Vector3>();
         if (_staticCache == null) _staticCache = new List<(Vector3, Color)>();
         if (_fishCache == null) _fishCache = new List<(Transform, Color)>();
+        if (_nightOverlayRenderers == null) _nightOverlayRenderers = new List<Renderer>();
     }
 
     private void Update()
@@ -140,7 +145,6 @@ public class DiveMapBehaviour : MonoBehaviour
             if (!DiveMap.Enabled.Value)
             {
                 if (_canvasGO != null) _canvasGO.SetActive(false);
-                if (_mapCamera != null) _mapCamera.enabled = false;
                 return;
             }
 
@@ -186,19 +190,26 @@ public class DiveMapBehaviour : MonoBehaviour
             }
             _wasInGame = true;
 
-            // Camera renders once every N frames to reduce GPU load
-            _renderSkipCount++;
-            if (_mapCamera != null)
-                _mapCamera.enabled = _renderSkipCount >= RenderEveryNFrames;
-            if (_mapCamera != null && _mapCamera.enabled)
-                _renderSkipCount = 0;
             if (_canvasGO != null) _canvasGO.SetActive(true);
 
             UpdateCamera();
             ApplyLayout();
 
             _scanTimer += Time.deltaTime;
-            if (_scanTimer >= MinScanInterval) { _scanTimer = 0f; ScanEntities(); }
+            if (_scanTimer >= MinScanInterval)
+            {
+                _scanTimer = 0f;
+                if (!_nightOverlayScanned) ScanNightOverlay();
+                ScanEntities();
+            }
+
+            // Manual render: disable overlay renderers, render, re-enable
+            _renderSkipCount++;
+            if (_renderSkipCount >= RenderEveryNFrames && _mapCamera != null)
+            {
+                _renderSkipCount = 0;
+                RenderMapCamera();
+            }
 
             UpdatePlayerMarker();
             UpdateMarkerPositions();
@@ -206,6 +217,83 @@ public class DiveMapBehaviour : MonoBehaviour
         catch (System.Exception e)
         {
             Plugin.Log.LogError($"DiveMap.Update: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Renders the map camera manually, temporarily hiding night overlay renderers
+    /// so the headlight darkness mask doesn't appear on the map.
+    /// </summary>
+    private void RenderMapCamera()
+    {
+        EnsureLists();
+
+        // Temporarily hide night overlay renderers
+        var wasEnabled = new List<bool>(_nightOverlayRenderers.Count);
+        for (int i = 0; i < _nightOverlayRenderers.Count; i++)
+        {
+            try
+            {
+                var r = _nightOverlayRenderers[i];
+                if (r == null) { wasEnabled.Add(false); continue; }
+                wasEnabled.Add(r.enabled);
+                r.enabled = false;
+            }
+            catch { wasEnabled.Add(false); }
+        }
+
+        // Render
+        try { _mapCamera.Render(); }
+        catch (System.Exception e) { Plugin.Log.LogError($"DiveMap: Camera.Render() failed: {e.Message}"); }
+
+        // Restore
+        for (int i = 0; i < _nightOverlayRenderers.Count; i++)
+        {
+            try
+            {
+                var r = _nightOverlayRenderers[i];
+                if (r != null) r.enabled = wasEnabled[i];
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Scans the player's child objects for headlight overlay renderers
+    /// (HeadLightOuter_Deep/Night/Glacier — large sprites on Default layer, sortingLayer=Player).
+    /// These are hidden during manual Camera.Render() to prevent the night darkness mask
+    /// from appearing on the map.
+    /// </summary>
+    private void ScanNightOverlay()
+    {
+        EnsureLists();
+        _nightOverlayRenderers.Clear();
+
+        try
+        {
+            var player = Singleton<InGameManager>._instance?.playerCharacter;
+            if (player == null) return;
+
+            var renderers = player.GetComponentsInChildren<Renderer>(true);
+            foreach (var r in renderers)
+            {
+                if (r == null) continue;
+                // HeadLightOuter_* are ~10x10 unit sprites that create the night light cone
+                if (r.gameObject.name.StartsWith("HeadLightOuter"))
+                {
+                    _nightOverlayRenderers.Add(r);
+                }
+            }
+        }
+        catch (System.Exception e)
+        {
+            Plugin.Log.LogWarning($"DiveMap: night overlay scan failed: {e.Message}");
+        }
+
+        if (_nightOverlayRenderers.Count > 0)
+        {
+            Plugin.Log.LogInfo($"DiveMap: found {_nightOverlayRenderers.Count} headlight overlay renderers to hide during map render");
+            _nightOverlayScanned = true;
         }
     }
 
@@ -258,7 +346,7 @@ public class DiveMapBehaviour : MonoBehaviour
         _renderTexture.useMipMap = false;
         _renderTexture.filterMode = FilterMode.Bilinear;
 
-        // Map camera — CopyFrom to inherit URP pipeline
+        // Map camera — CopyFrom to inherit URP pipeline, always disabled (we use manual Render())
         var camGO = new GameObject("DDE_MapCamera");
         _mapCamera = camGO.AddComponent<Camera>();
         _mapCamera.CopyFrom(mainCam);
@@ -269,7 +357,7 @@ public class DiveMapBehaviour : MonoBehaviour
         _mapCamera.clearFlags = CameraClearFlags.SolidColor;
         _mapCamera.backgroundColor = new Color(0.05f, 0.08f, 0.15f, 1f);
         _mapCamera.depth = -100;
-        _mapCamera.enabled = false;
+        _mapCamera.enabled = false; // always disabled, we call Render() manually
 
         float cx = (_boundsMin.x + _boundsMax.x) / 2f;
         float cy = (_boundsMin.y + _boundsMax.y) / 2f;
@@ -659,7 +747,9 @@ public class DiveMapBehaviour : MonoBehaviour
         _escapePosCache.Clear();
         _staticCache.Clear();
         _fishCache.Clear();
+        _nightOverlayRenderers.Clear();
         _escapeScanned = false;
+        _nightOverlayScanned = false;
         _cachedEntityCount = 0;
         _showBigMap = false;
         _lastBigMap = false;
