@@ -20,6 +20,7 @@ public class Plugin : BasePlugin
         // Initialize features
         AutoPickup.Init(Config);
         DiveMap.Init(Config);
+        QuickSceneSwitch.Init(Config);
         ConfigUI.Init(Config); // Must be after other features so it discovers their ConfigEntries
 
         // Apply Harmony patches

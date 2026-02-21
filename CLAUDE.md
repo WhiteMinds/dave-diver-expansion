@@ -102,7 +102,7 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `PickupInstanceItem` | 掉落物品基类（所有可拾取物品） | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `isNeedSwapSetID`, `usePreset`, `GetItemID()` |
 | `InstanceItemChest` | 宝箱 | `SuccessInteract(BaseCharacter)`, `IsOpen` |
 | `CrabTrapZone` | 捕蟹笼区域 | `CheckAvailableInteraction(BaseCharacter)`, `SetUpCrabTrap(int)` |
-| `InGameManager` : `Singleton<InGameManager>` | 游戏管理器 | `playerCharacter` (获取玩家实例) |
+| `InGameManager` : `Singleton<InGameManager>` | 游戏管理器 | `playerCharacter` (获取玩家实例), `GetBoundary()` (当前子区域边界), `SubBoundsCollection` (所有子区域) |
 | `Singleton<T>` : `MonoBehaviour` | 单例基类 | `Instance` (静态属性) |
 | `SingletonNoMono<T>` : `Il2CppSystem.Object` | 非 MonoBehaviour 单例基类 | `Instance` (静态属性) |
 | `DR.Save.SaveUserOptions` : `SaveDataBase` | 用户设置（语言、音量、按键等） | `CurrentLanguage`, `CheckLanguage(SystemLanguage)` |
@@ -117,6 +117,17 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `SABaseFishSystem` | 鱼 AI 系统基类 | 所有鱼都有此组件，存储 AI 数据 |
 | `DR.AI.AwayFromTarget` : `AIAbility` | 逃跑 AI 能力 | 非攻击性鱼有此组件；攻击性鱼没有 |
 | `SAFishData` : `ScriptableObject` | 鱼配置数据 | `AggressionType`（`FishAggressionType` 枚举）。是 ScriptableObject，不在 GameObject 上 |
+| `DR.CameraSubBoundsCollection` | 相机子区域集合 | `m_BoundsList`（`List<CameraSubBounds>`）。通过 `InGameManager.SubBoundsCollection` 访问 |
+| `DR.CameraSubBounds` | 单个相机子区域 | `Bounds`（Unity `Bounds`，含 center/size/min/max） |
+| `Common.Contents.MoveScenePanel` | 场景切换菜单面板 | `OnPlayerEnter(bool)`, `ShowList(bool)`, `OnOpen()`, `OnClick()`, `OnCancel()`, `IsOpened`, `IsEntered` |
+| `Common.Contents.MoveSceneTrigger` | 场景切换触发器（碰撞体） | `OnPlayerEnter(bool)`, 引用 `m_Panel`(MoveScenePanel) |
+| `Common.Contents.MoveSceneElement` | 场景切换菜单选项 | `sceneName`(枚举: Lobby/SuShi/Farm/FishFarm/SushiBranch/Dredge), `OnClick()`, `IsLocked`, `CheckUnlock()` |
+| `LobbyMainCanvasManager` : `Singleton<>` | Lobby 场景 UI 管理器 | `MoveScenePanel`(属性), `OnDREvent(DiveTriggerEvent)` |
+| `DiveTrigger` | 潜水出发触发器 | `m_Panel`(LobbyStartGamePanelUI), `OnPlayerEnter(bool)` |
+| `LobbyStartGamePanelUI` | 潜水出发面板（长按出发） | `Activate(bool)`, `StartGame(StartParameter)`, `StartGameByMirror(string, SceneConnectLocationID)` |
+| `MainCanvasManager` : `Singleton<>` | 游戏内 UI 画布管理器 | `pausePopupPanel`(PausePopupMenuPanel), `quickPausePopup`(QuickPausePopup), `IsQuickPause`(bool) |
+| `PausePopupMenuPanel` : `BaseUI` | ESC 暂停菜单面板 | `OnPopup()`, `OnClickContinue()`, `OnClickSettings()`, `ShowReturnLobbyPanel()` 。检测是否打开：`gameObject.activeSelf` |
+| `BaseUI` : `MonoBehaviour` | 游戏 UI 面板基类 | `uiDepth` 字段 |
 
 > 所有交互类使用 `OnTriggerEnter2D` 检测玩家碰撞，`SuccessInteract` 触发实际拾取。
 
@@ -206,7 +217,8 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
     ├── Features/
     │   ├── AutoPickup.cs          # 自动拾取功能（读取 EntityRegistry）
     │   ├── ConfigUI.cs            # uGUI 游戏内配置面板 (F1 切换)
-    │   └── DiveMap.cs             # 潜水地图 HUD (M 键切换，Camera→RenderTexture 方案)
+    │   ├── DiveMap.cs             # 潜水地图 HUD (M 键切换，Camera→RenderTexture 方案)
+    │   └── QuickSceneSwitch.cs    # 快速场景切换 (F2 键打开 MoveScenePanel)
     └── Helpers/
         ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期 Harmony 补丁
         ├── I18n.cs                # 国际化工具 + 游戏语言缓存 Harmony 补丁
@@ -362,18 +374,21 @@ DaveDiverExpansion-v0.2.0.zip
 - `Features/DiveMap.cs` 实现潜水 HUD 小地图和大地图
 - **小地图**：右上角，跟随玩家，可配置缩放级别（`MiniMapZoom`）
 - **大地图**：按 M 键切换，屏幕中央显示完整关卡
-- 技术方案：独立正交 Camera → RenderTexture → RawImage
+- 技术方案：独立正交 Camera → **正方形** RenderTexture → RawImage
   - Camera 必须 `CopyFrom(mainCam)` 继承 URP 管线设置
   - Camera 始终 `enabled = false`，通过手动 `Camera.Render()` 控制渲染时机
-  - 关卡边界从 `InGameManager.GetBoundary()` 获取（备选 `CurrentCameraBounds`）
+  - **正方形 RenderTexture**：确保小地图始终 1:1，大地图通过 `uvRect` 裁剪为关卡宽高比
+  - 关卡边界：先用 `InGameManager.GetBoundary()` 初始化，再合并 `InGameManager.SubBoundsCollection` 中所有子区域获取完整关卡范围（详见 [docs/game-internals.md](docs/game-internals.md) § 关卡边界）
+  - ⚠️ `GetBoundary()` 仅返回当前相机子区域，不是完整关卡。冰河区域等多子区域关卡必须合并 `CameraSubBoundsCollection.m_BoundsList`
 - **夜间头灯遮罩处理**
   - 玩家有 3 个子对象 `HeadLightOuter_Deep/Night/Glacier`（~10x10 SpriteRenderer，Default 层，sortingLayer=Player）
   - 这些大面积渐变精灵会在地图上形成黑色遮罩
   - `FindObjectsOfType<CharacterHeadLight>()` 在运行时返回 0（组件不在玩家身上）
   - 解决方案：扫描玩家子对象找 `HeadLightOuter*` 前缀的 Renderer，手动 Render 前禁用、Render 后恢复
   - **不能用 culling mask 排除**：这些精灵在 Default 层（0），排除会隐藏整个场景
-- **场景排除**
+- **场景排除与 UI 冲突处理**
   - 鲛人村（`MermanVillage` / `MV_*`）：自带 M 键地图，DiveMap 在此场景自动禁用
+  - ESC 暂停菜单打开时：隐藏小地图 + 禁用 M 键切换（通过 `MainCanvasManager.pausePopupPanel.gameObject.activeSelf` 检测）
 - **性能优化：EntityRegistry + 扫描与重定位分离**
   - 实体来源：从 `EntityRegistry.AllFish`/`AllItems`/`AllChests` 读取（Harmony 生命周期补丁维护，无 `FindObjectsOfType`）
   - 扫描阶段（每 1s）：遍历注册表，过滤已打开宝箱，缓存引用/坐标
@@ -400,6 +415,34 @@ DaveDiverExpansion-v0.2.0.zip
   - 普通鱼有 `AwayFromTarget` 组件（遇敌逃跑），攻击性鱼没有
   - 注意 `AwayFromTarget` 在命名空间 `DR.AI` 下
 - Config: Enabled, ToggleKey(M), ShowEscapePods, ShowFish, ShowItems, ShowChests, MapSize, MapOpacity, MiniMapZoom
+
+## 快速场景切换 (QuickSceneSwitch)
+
+- `Features/QuickSceneSwitch.cs` — 按 F2（可配置）直接打开场景切换菜单，无需走到出口触发器
+- 原理：`FindObjectOfType<MoveScenePanel>()` 找到当前场景的面板，调用 `OnPlayerEnter(true)` + `ShowList(true)` 打开
+- 关闭时调用 `OnCancel()` + `OnPlayerEnter(false)` 清除触发区状态
+- **关键踩坑**：`OnPlayerEnter(true)` 模拟玩家进入触发区，如果关闭面板后不调 `OnPlayerEnter(false)`，空格键焦点会残留在面板按钮上，导致空格重新打开面板
+- 通过 `_openedByUs` 标记追踪状态，每帧检测面板是否已被原生 ESC 关闭，自动补调 `OnPlayerEnter(false)` 清理
+- Config: Enabled, ToggleKey(F2)
+
+### 游戏场景切换系统
+
+Lobby/寿司店/农场等非潜水场景之间的切换通过以下体系实现：
+
+```
+MoveSceneTrigger (碰撞触发器，检测玩家进入)
+  ↓ OnPlayerEnter(true) → m_Panel.OnPlayerEnter(true)
+MoveScenePanel (UI 面板，显示可选场景列表)
+  ↓ ShowList(true) → 显示已解锁的 MoveSceneElement
+  ↓ OnOpen() / OnClick() → 选择场景
+MoveSceneElement (单个选项)
+  ↓ sceneName 枚举: Lobby, SuShi, Farm, FishFarm, SushiBranch, Dredge
+  ↓ OnClick() → CheckUnlock() → 执行场景切换
+```
+
+- 每个非潜水场景有各自的 `MoveScenePanel` 实例（Lobby 通过 `LobbyMainCanvasManager.Instance.MoveScenePanel` 访问，寿司店通过 `SushiBarMainCanvasManager` 等）
+- `MoveSceneTrigger` 是碰撞体触发器，玩家走入时调用 `OnPlayerEnter(true)`，走出时调用 `OnPlayerEnter(false)`
+- 潜水出发是另一个系统：`DiveTrigger` → `LobbyStartGamePanelUI`（长按出发，`StartGame(StartParameter)`）
 
 ## 国际化 (i18n)
 

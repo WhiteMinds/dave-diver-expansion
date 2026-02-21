@@ -696,5 +696,6 @@ public class ConfigUIBehaviour : MonoBehaviour
     private void Update()
     {
         ConfigUI.CheckToggle();
+        QuickSceneSwitch.CheckToggle();
     }
 }

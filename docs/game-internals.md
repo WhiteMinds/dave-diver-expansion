@@ -301,9 +301,65 @@ bool isAggressive = fish.GetComponent<DR.AI.AwayFromTarget>() == null;
 
 ### 关卡边界
 
-- `InGameManager.GetBoundary()` — 返回关卡完整边界 `Bounds`（推荐）
-- `InGameManager.CurrentCameraBounds` — 备选
-- `OrthographicCameraManager.m_BottomLeftPivot/m_TopRightPivot` — **不可靠**，在 `CalculateCamerabox()` 调用前为 (0,0)
+#### ⚠️ `GetBoundary()` 的陷阱
+
+`InGameManager.GetBoundary()` **并非**返回整个关卡的完整边界。它实际上返回的是 **当前相机子区域** 的边界（即玩家所在的那一小块区域），而非整个关卡的合并边界。
+
+在标准潜水场景中差异不大，但在 **冰河区域 (Glacier)** 等多子区域关卡中，`GetBoundary()` 返回的范围远小于实际关卡范围（例如仅 34 单位宽，而完整关卡约 129 单位宽）。
+
+#### 正确方案：合并 CameraSubBoundsCollection
+
+```csharp
+// InGameManager.SubBoundsCollection → CameraSubBoundsCollection
+// CameraSubBoundsCollection.m_BoundsList → List<CameraSubBounds>
+// CameraSubBounds.Bounds → Unity Bounds (center, size, min, max)
+
+var igm = Singleton<InGameManager>._instance;
+Vector2 boundsMin, boundsMax;
+
+// 先用 GetBoundary() 作为初始值
+var b = igm.GetBoundary();
+boundsMin = new Vector2(b.min.x, b.min.y);
+boundsMax = new Vector2(b.max.x, b.max.y);
+
+// 合并所有子区域，获取完整关卡范围
+var subBoundsCol = igm.SubBoundsCollection;
+if (subBoundsCol != null)
+{
+    var boundsList = subBoundsCol.m_BoundsList;
+    for (int i = 0; i < boundsList.Count; i++)
+    {
+        var sb = boundsList[i];
+        var bounds = sb.Bounds;
+        boundsMin = Vector2.Min(boundsMin, new Vector2(bounds.min.x, bounds.min.y));
+        boundsMax = Vector2.Max(boundsMax, new Vector2(bounds.max.x, bounds.max.y));
+    }
+}
+```
+
+#### 各方案对比
+
+| 方案 | 返回值 | 可靠性 |
+|------|--------|--------|
+| `InGameManager.GetBoundary()` | 当前相机子区域边界 | ⚠️ 多子区域关卡不完整 |
+| `InGameManager.SubBoundsCollection` → 合并 | 完整关卡边界 | ✅ 推荐 |
+| `InGameManager.CurrentCameraBounds` | 当前相机区域 | ⚠️ 同上 |
+| `OrthographicCameraManager.m_BottomLeftPivot/m_TopRightPivot` | 相机框 | ❌ `CalculateCamerabox()` 前为 (0,0) |
+
+#### 关键类型
+
+| 类 | 说明 |
+|---|---|
+| `DR.CameraSubBoundsCollection` | 管理所有子区域，字段 `m_BoundsList: List<CameraSubBounds>` |
+| `DR.CameraSubBounds` | 单个子区域，属性 `Bounds` 返回 Unity `Bounds` |
+
+#### 实际数据示例
+
+**冰河区域 (Glacier)**：
+- `GetBoundary()` 返回：仅当前子区域（约 34 单位宽）
+- 合并 SubBounds 后：`(-64.48, -242.05)` 到 `(64.48, 29.71)`，宽 129，高 272，aspect ≈ 0.47
+
+**注意**：不要尝试用逃生点坐标动态扩展边界 — 逃生点可能在距关卡很远的位置（如 1000+ 单位外），会导致地图比例严重失真。
 
 ### IL2CPP 命名空间陷阱
 
@@ -314,7 +370,60 @@ bool isAggressive = fish.GetComponent<DR.AI.AwayFromTarget>() == null;
 
 ---
 
-## 9. 参考 Mod 项目
+## 9. UI 弹窗与暂停菜单系统
+
+### MainCanvasManager (核心 UI 管理器)
+
+`MainCanvasManager` 继承 `Singleton<MainCanvasManager>`，是游戏内所有 UI 面板的中央管理器。
+
+```csharp
+// 安全访问（避免 auto-create）
+var mcm = Singleton<MainCanvasManager>._instance;
+```
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `pausePopupPanel` | `PausePopupMenuPanel` | ESC 暂停菜单面板实例 |
+| `quickPausePopup` | `QuickPausePopup` | 快速暂停弹窗实例 |
+| `IsQuickPause` | `bool` | 是否有快速暂停弹窗正在显示 |
+
+### 检测暂停菜单是否打开
+
+潜水时按 ESC 会打开 `PausePopupMenuPanel`（继承 `BaseUI : MonoBehaviour`），包含「继续」「设置」「返回大厅」等按钮。
+
+```csharp
+bool isPaused = false;
+try
+{
+    var mcm = Singleton<MainCanvasManager>._instance;
+    if (mcm != null)
+    {
+        var pausePanel = mcm.pausePopupPanel;
+        if (pausePanel != null && pausePanel.gameObject.activeSelf)
+            isPaused = true;
+    }
+}
+catch { }
+```
+
+**Mod 应用场景**：
+- 暂停菜单打开时隐藏自定义 HUD（如 DiveMap 小地图）
+- 暂停菜单打开时禁用自定义热键（如 M 键切换大地图）
+- 避免在暂停状态下执行游戏逻辑
+
+### PausePopupMenuPanel 关键方法
+
+| 方法 | 说明 |
+|------|------|
+| `OnPopup()` | 面板显示时调用 |
+| `OnClickContinue()` | 点击「继续」按钮 |
+| `OnClickSettings()` | 点击「设置」按钮 |
+| `ShowReturnLobbyPanel()` | 显示「返回大厅」确认 |
+| `CancelReturnLobby()` | 取消返回大厅 |
+
+---
+
+## 10. 参考 Mod 项目
 
 | 项目 | 作者 | 功能 | 参考价值 |
 |------|------|------|----------|

@@ -188,6 +188,26 @@ public class DiveMapBehaviour : MonoBehaviour
                 return;
             }
 
+            // Hide minimap and ignore M key when pause menu is open (ESC during diving)
+            bool pauseMenuOpen = false;
+            try
+            {
+                var mcm = Singleton<MainCanvasManager>._instance;
+                if (mcm != null)
+                {
+                    var pausePanel = mcm.pausePopupPanel;
+                    if (pausePanel != null && pausePanel.gameObject.activeSelf)
+                        pauseMenuOpen = true;
+                }
+            }
+            catch { }
+
+            if (pauseMenuOpen)
+            {
+                if (_canvasGO != null) _canvasGO.SetActive(false);
+                return;
+            }
+
             if (toggled)
             {
                 _showBigMap = !_showBigMap;
@@ -321,6 +341,30 @@ public class DiveMapBehaviour : MonoBehaviour
         _boundsMin = new Vector2(boundary.min.x, boundary.min.y);
         _boundsMax = new Vector2(boundary.max.x, boundary.max.y);
 
+        // Union all camera sub-bounds to get the full level extent
+        // (GetBoundary() only returns the current sub-region, not the whole level)
+        try
+        {
+            var subBoundsCol = igm.SubBoundsCollection;
+            if (subBoundsCol != null)
+            {
+                var boundsList = subBoundsCol.m_BoundsList;
+                if (boundsList != null && boundsList.Count > 0)
+                {
+                    for (int i = 0; i < boundsList.Count; i++)
+                    {
+                        var sb = boundsList[i];
+                        if (sb == null) continue;
+                        var b = sb.Bounds;
+                        _boundsMin = Vector2.Min(_boundsMin, new Vector2(b.min.x, b.min.y));
+                        _boundsMax = Vector2.Max(_boundsMax, new Vector2(b.max.x, b.max.y));
+                    }
+                    Plugin.Log.LogInfo($"DiveMap: merged {boundsList.Count} sub-bounds");
+                }
+            }
+        }
+        catch (System.Exception e) { Plugin.Log.LogWarning($"DiveMap: SubBounds scan failed: {e.Message}"); }
+
         float boundsWidth = _boundsMax.x - _boundsMin.x;
         float boundsHeight = _boundsMax.y - _boundsMin.y;
 
@@ -351,11 +395,11 @@ public class DiveMapBehaviour : MonoBehaviour
         _fullOrthoSize = boundsHeight / 2f;
         _cameraZ = mainCam.transform.position.z;
 
-        // RenderTexture (lower res = less GPU work)
-        int texHeight = TexBaseHeight;
-        int texWidth = Mathf.Clamp(Mathf.RoundToInt(texHeight * _levelAspect), 64, 2048);
+        // Square RenderTexture — camera renders 1:1 area, minimap is always square,
+        // big map uses uvRect to crop to level aspect
+        int texSize = TexBaseHeight;
 
-        _renderTexture = new RenderTexture(texWidth, texHeight, 24);
+        _renderTexture = new RenderTexture(texSize, texSize, 24);
         _renderTexture.useMipMap = false;
         _renderTexture.filterMode = FilterMode.Bilinear;
 
@@ -381,7 +425,7 @@ public class DiveMapBehaviour : MonoBehaviour
         _viewMax = _boundsMax;
 
         CreateHUD();
-        Plugin.Log.LogInfo($"DiveMap: created, bounds=({_boundsMin})-({_boundsMax}), tex={texWidth}x{texHeight}");
+        Plugin.Log.LogInfo($"DiveMap: created, bounds=({_boundsMin})-({_boundsMax}), aspect={_levelAspect:F2}, tex={texSize}x{texSize}");
     }
 
     /// <summary>
@@ -394,8 +438,9 @@ public class DiveMapBehaviour : MonoBehaviour
 
         if (_showBigMap)
         {
-            // Full level view
-            _mapCamera.orthographicSize = _fullOrthoSize;
+            // Full level view — ortho must cover entire level in both axes (square texture)
+            float bigOrtho = Mathf.Max(_fullOrthoSize, _fullOrthoSize * _levelAspect);
+            _mapCamera.orthographicSize = bigOrtho;
             float cx = (_boundsMin.x + _boundsMax.x) / 2f;
             float cy = (_boundsMin.y + _boundsMax.y) / 2f;
             _mapCamera.transform.position = new Vector3(cx, cy, _cameraZ);
@@ -405,14 +450,13 @@ public class DiveMapBehaviour : MonoBehaviour
         }
         else
         {
-            // Minimap: follow player with zoom
+            // Minimap: follow player with zoom, square view (1:1 texture)
             float zoom = DiveMap.MiniMapZoom.Value;
             float ortho = _fullOrthoSize / zoom;
             _mapCamera.orthographicSize = ortho;
 
-            // Camera visible half-extents
-            float halfH = ortho;
-            float halfW = ortho * _levelAspect;
+            // Square texture → halfW = halfH = ortho
+            float half = ortho;
 
             // Get player position
             Vector3 playerPos = _mapCamera.transform.position;
@@ -424,19 +468,19 @@ public class DiveMapBehaviour : MonoBehaviour
             catch { }
 
             // Clamp camera so it doesn't go outside level bounds
-            float camX = Mathf.Clamp(playerPos.x, _boundsMin.x + halfW, _boundsMax.x - halfW);
-            float camY = Mathf.Clamp(playerPos.y, _boundsMin.y + halfH, _boundsMax.y - halfH);
+            float camX = Mathf.Clamp(playerPos.x, _boundsMin.x + half, _boundsMax.x - half);
+            float camY = Mathf.Clamp(playerPos.y, _boundsMin.y + half, _boundsMax.y - half);
 
             // If level is smaller than view in either axis, center on level
-            if (halfW * 2 >= _boundsMax.x - _boundsMin.x)
+            if (half * 2 >= _boundsMax.x - _boundsMin.x)
                 camX = (_boundsMin.x + _boundsMax.x) / 2f;
-            if (halfH * 2 >= _boundsMax.y - _boundsMin.y)
+            if (half * 2 >= _boundsMax.y - _boundsMin.y)
                 camY = (_boundsMin.y + _boundsMax.y) / 2f;
 
             _mapCamera.transform.position = new Vector3(camX, camY, _cameraZ);
 
-            _viewMin = new Vector2(camX - halfW, camY - halfH);
-            _viewMax = new Vector2(camX + halfW, camY + halfH);
+            _viewMin = new Vector2(camX - half, camY - half);
+            _viewMax = new Vector2(camX + half, camY + half);
         }
     }
 
@@ -526,6 +570,12 @@ public class DiveMapBehaviour : MonoBehaviour
             _containerRT.sizeDelta = new Vector2(mapW, mapH);
             _containerRT.anchoredPosition = Vector2.zero;
 
+            // Crop square texture to show only the level portion
+            if (_levelAspect >= 1f)
+                _mapImage.uvRect = new Rect(0f, (1f - 1f / _levelAspect) / 2f, 1f, 1f / _levelAspect);
+            else
+                _mapImage.uvRect = new Rect((1f - _levelAspect) / 2f, 0f, _levelAspect, 1f);
+
             _mapImage.color = new Color(1, 1, 1, Mathf.Max(opacity, 0.9f));
             _borderImage.color = new Color(0.05f, 0.05f, 0.1f, 0.95f);
             if (modeChanged) SetMarkerSizes(BigMarkerPlayer, BigMarkerEscape, BigMarkerEntity);
@@ -536,10 +586,12 @@ public class DiveMapBehaviour : MonoBehaviour
             _containerRT.anchorMax = new Vector2(1, 1);
             _containerRT.pivot = new Vector2(1, 1);
 
+            // Fixed 1:1 square minimap — texture is already square, show full
             float mapH = 1080f * DiveMap.MapSize.Value;
-            float mapW = mapH * _levelAspect;
-            _containerRT.sizeDelta = new Vector2(mapW, mapH);
+            _containerRT.sizeDelta = new Vector2(mapH, mapH);
             _containerRT.anchoredPosition = new Vector2(-16, -16);
+
+            _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
 
             _mapImage.color = new Color(1, 1, 1, opacity);
             _borderImage.color = new Color(0.1f, 0.1f, 0.15f, 0.9f);

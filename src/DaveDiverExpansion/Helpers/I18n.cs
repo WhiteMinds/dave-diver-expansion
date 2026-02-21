@@ -47,6 +47,9 @@ public static class I18n
         ["MapSize"] = "地图大小",
         ["MapOpacity"] = "地图透明度",
         ["MiniMapZoom"] = "小地图缩放",
+
+        // QuickSceneSwitch entries
+        ["QuickSceneSwitch"] = "快速切换场景",
     };
 
     public static ConfigEntry<ModLanguage> LanguageSetting;
