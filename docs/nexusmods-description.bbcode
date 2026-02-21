@@ -21,11 +21,19 @@ Minimap HUD and full-level map overlay while diving.
 [*]Color-coded markers: escape pods (green), fish (blue), aggressive fish (red), items (yellow), chests (orange), O2 chests (cyan)
 [/list]
 
+[b]Quick Scene Switch[/b]
+Instantly open the scene-switch menu from anywhere — no need to walk to the exit.
+[list]
+[*]Press [b]F2[/b] to open the menu in any non-dive scene (Lobby, Sushi Bar, Farm, etc.)
+[*]Same menu as the native exit trigger, with all unlocked destinations
+[/list]
+
 [b]In-Game Config Panel[/b]
 Press [b]F1[/b] to open a settings UI overlay.
 [list]
 [*]Auto-discovers all config entries from all features
 [*]Toggle, slider, dropdown, and text input controls
+[*]In-game key rebinding — click any hotkey button and press a new key
 [*]Changes take effect immediately
 [/list]
 
@@ -47,6 +55,17 @@ You can also edit the config file directly:
 [font=Courier New]Dave the Diver\BepInEx\config\com.davediver.expansion.cfg[/font]
 
 [size=3][b]Settings[/b][/size]
+
+[b]ConfigUI[/b]
+[list]
+[*][font=Courier New]ToggleKey[/font] (default: F1) — Key to open/close the config panel
+[/list]
+
+[b]QuickSceneSwitch[/b]
+[list]
+[*][font=Courier New]Enabled[/font] (default: true) — Enable quick scene switching
+[*][font=Courier New]ToggleKey[/font] (default: F2) — Key to open the scene-switch menu
+[/list]
 
 [b]AutoPickup[/b]
 [list]
@@ -71,6 +90,13 @@ You can also edit the config file directly:
 [/list]
 
 [size=3][b]Changelog[/b][/size]
+
+[b]v0.3.0[/b]
+[list]
+[*]New: Quick Scene Switch — press F2 to open the scene-switch menu from anywhere (no need to walk to the exit)
+[*]New: In-game key rebinding — click any hotkey in the config panel to rebind it ("press any key" UX)
+[*]Improved: Config panel section order matches logical grouping
+[/list]
 
 [b]v0.2.0[/b]
 [list]
