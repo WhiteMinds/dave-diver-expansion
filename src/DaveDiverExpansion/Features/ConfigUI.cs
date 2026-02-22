@@ -24,6 +24,7 @@ public static class ConfigUI
     private static GameObject _panelGO;
     private static GameObject _overlayGO;
     private static Text _titleText;
+    private static Text _descText;
     private static bool _isVisible;
     private static bool _lastLangChinese;
 
@@ -33,6 +34,14 @@ public static class ConfigUI
 
     // Track UI controls for cleanup on rebuild
     private static readonly List<GameObject> _sectionObjects = new();
+
+    // Hover description: row RectTransform → raw description key (translated on display)
+    private static readonly List<(RectTransform rt, string desc)> _rowDescs = new();
+    private static RectTransform _viewportRT;
+    private static ScrollRect _scrollRect;
+    private static RectTransform _hoveredRow;
+    private static float _hoverTimer;
+    private const float HoverDelay = 0.3f;
 
     public static void Init(ConfigFile config)
     {
@@ -80,6 +89,9 @@ public static class ConfigUI
                     _titleText.text = I18n.T("DaveDiverExpansion Settings");
                 RebuildEntries();
             }
+
+            UpdateHoverDesc();
+            HandleScrollWheel();
         }
 
         try
@@ -264,6 +276,28 @@ public static class ConfigUI
 
         scrollRect.viewport = viewportRT;
         scrollRect.content = contentRT;
+        _viewportRT = viewportRT;
+        _scrollRect = scrollRect;
+
+        // Bottom divider
+        var div2GO = CreateUIObject("Divider2", _panelGO);
+        var div2Img = div2GO.AddComponent<Image>();
+        div2Img.color = new Color(0.4f, 0.4f, 0.5f, 0.6f);
+        var div2LE = div2GO.AddComponent<LayoutElement>();
+        div2LE.preferredHeight = 2;
+        div2LE.flexibleHeight = 0;
+
+        // Description bar
+        var descGO = CreateUIObject("DescBar", _panelGO);
+        var descLE = descGO.AddComponent<LayoutElement>();
+        descLE.preferredHeight = 40;
+        descLE.flexibleHeight = 0;
+        _descText = descGO.AddComponent<Text>();
+        _descText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        _descText.fontSize = 13;
+        _descText.color = new Color(0.65f, 0.65f, 0.7f);
+        _descText.alignment = TextAnchor.MiddleLeft;
+        _descText.text = "";
 
         // Start hidden
         _panelGO.SetActive(false);
@@ -272,6 +306,9 @@ public static class ConfigUI
 
     private static void RebuildEntries()
     {
+        if (_descText != null) _descText.text = "";
+        _rowDescs.Clear();
+
         // Clear old section objects
         foreach (var go in _sectionObjects)
         {
@@ -405,6 +442,11 @@ public static class ConfigUI
             CreateEnumControl(rowGO, entry);
         else
             CreateStringControl(rowGO, entry);
+
+        // Register row for hover description (checked via RectTransform hit test in Update)
+        string desc = entry.Description?.Description;
+        if (!string.IsNullOrEmpty(desc))
+            _rowDescs.Add((rowGO.GetComponent<RectTransform>(), desc));
 
         return rowGO;
     }
@@ -824,6 +866,77 @@ public static class ConfigUI
             _listeningText = null;
             return;
         }
+    }
+
+    /// <summary>
+    /// Per-frame hover check with debounce: only updates description after hovering
+    /// on the same row for HoverDelay seconds, so fast mouse movement doesn't cause
+    /// distracting rapid text changes. Clears when mouse leaves the viewport.
+    /// </summary>
+    private static void UpdateHoverDesc()
+    {
+        if (_descText == null) return;
+
+        Vector2 mousePos = Input.mousePosition;
+
+        // Mouse outside the scroll viewport → clear
+        if (_viewportRT != null && !RectTransformUtility.RectangleContainsScreenPoint(_viewportRT, mousePos))
+        {
+            _descText.text = "";
+            _hoveredRow = null;
+            _hoverTimer = 0;
+            return;
+        }
+
+        // Find which row the mouse is over
+        RectTransform hitRow = null;
+        string hitDesc = null;
+        foreach (var (rt, desc) in _rowDescs)
+        {
+            if (rt != null && RectTransformUtility.RectangleContainsScreenPoint(rt, mousePos))
+            {
+                hitRow = rt;
+                hitDesc = desc;
+                break;
+            }
+        }
+
+        if (hitRow == null) return; // gap between rows — keep current text
+
+        // Row changed → restart timer
+        if (hitRow != _hoveredRow)
+        {
+            _hoveredRow = hitRow;
+            _hoverTimer = 0;
+        }
+
+        _hoverTimer += Time.unscaledDeltaTime;
+        if (_hoverTimer >= HoverDelay)
+            _descText.text = I18n.T(hitDesc);
+    }
+
+    /// <summary>
+    /// Manual scroll wheel handling — IL2CPP event bubbling to ScrollRect is unreliable.
+    /// </summary>
+    private static void HandleScrollWheel()
+    {
+        if (_scrollRect == null) return;
+
+        float scroll = Input.mouseScrollDelta.y;
+        if (scroll == 0) return;
+
+        if (_viewportRT != null &&
+            !RectTransformUtility.RectangleContainsScreenPoint(_viewportRT, Input.mousePosition))
+            return;
+
+        // 40px per scroll notch, normalized by scrollable range
+        float contentH = _scrollRect.content.rect.height;
+        float viewportH = _scrollRect.viewport.rect.height;
+        float range = contentH - viewportH;
+        if (range <= 0) return;
+
+        _scrollRect.verticalNormalizedPosition = Mathf.Clamp01(
+            _scrollRect.verticalNormalizedPosition + scroll * 40f / range);
     }
 
     private static void Hide()

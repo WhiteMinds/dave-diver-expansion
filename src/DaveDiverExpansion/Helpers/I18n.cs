@@ -76,6 +76,33 @@ public static class I18n
         // QuickSceneSwitch entries
         ["QuickSceneSwitch"] = "快速切换场景",
 
+        // Config descriptions
+        ["Key to open/close the in-game settings panel"] = "打开/关闭游戏内设置面板的按键",
+        ["UI language (Auto detects from game/system)"] = "界面语言（Auto 自动检测游戏/系统语言）",
+        ["Open the scene-switch menu with a hotkey (no need to walk to the exit)"] = "按快捷键打开场景切换菜单（无需走到出口）",
+        ["Key to open/close the scene-switch menu"] = "打开/关闭场景切换菜单的按键",
+        ["Enable automatic item pickup while diving"] = "潜水时启用自动拾取物品",
+        ["Auto-pickup dead fish"] = "自动拾取死鱼",
+        ["Auto-pickup dropped items"] = "自动拾取掉落物品",
+        ["Auto-open treasure chests"] = "自动开启宝箱",
+        ["Radius around the player to auto-pick items (in game units)"] = "自动拾取物品的范围半径（游戏单位）",
+        ["Enable the dive map HUD"] = "启用潜水地图 HUD",
+        ["Key to toggle the enlarged map view"] = "切换大地图视图的按键",
+        ["Show the minimap overlay during diving"] = "潜水时显示小地图",
+        ["Screen corner for the minimap"] = "小地图在屏幕上的位置",
+        ["Minimap horizontal offset from screen edge"] = "小地图距屏幕边缘的水平偏移",
+        ["Minimap vertical offset from screen edge"] = "小地图距屏幕边缘的垂直偏移",
+        ["Minimap size as fraction of screen height"] = "小地图大小（占屏幕高度的比例）",
+        ["Minimap zoom level (higher = more zoomed in)"] = "小地图缩放级别（越大越放大）",
+        ["Minimap opacity"] = "小地图透明度",
+        ["Show escape pod/mirror markers on the map"] = "在地图上显示逃生点标记",
+        ["Show ore/mineral markers on the map"] = "在地图上显示矿石标记",
+        ["Show fish markers on the map"] = "在地图上显示鱼类标记",
+        ["Show item markers on the map"] = "在地图上显示物品标记",
+        ["Show chest markers on the map"] = "在地图上显示宝箱标记",
+        ["Scale multiplier for all map markers"] = "所有地图标记的缩放倍率",
+        ["Enable verbose debug logging for DiveMap diagnostics"] = "启用详细的 DiveMap 调试日志",
+
         // KeyCode binding
         ["Press a key..."] = "请按键...",
     };

@@ -352,6 +352,121 @@ if (isChinese != _legendLangChinese)
 
 ---
 
+## 11. EventTrigger 会吞掉所有 UI 事件（ScrollRect 失效）
+
+**问题**：在 ScrollRect 内的子元素上添加 `EventTrigger`（用于 PointerEnter/PointerExit 悬停检测），结果滚轮滚动和拖拽滚动全部失效。
+
+**原因**：Unity 的 `EventTrigger` 组件实现了**所有**事件接口（`IScrollHandler`、`IDragHandler`、`IBeginDragHandler` 等）。即使只注册了 PointerEnter/PointerExit 回调，其他事件也会被 EventTrigger 消费（空处理），**阻止事件冒泡**到父级 ScrollRect。
+
+同理，在子元素上添加透明 `Image`（作为 raycast target）也会改变事件路由——EventSystem 的 raycast 会优先命中子元素的 Image 而非 ScrollRect viewport 的 Image。
+
+**解决方案**：**不要使用 EventTrigger 做悬停检测**。改用 Update 中的 `RectTransformUtility.RectangleContainsScreenPoint()` 命中测试：
+
+```csharp
+// 创建时注册行到列表（不添加任何额外组件）
+private static readonly List<(RectTransform rt, string desc)> _rowDescs = new();
+
+// CreateEntryRow 中：
+string desc = entry.Description?.Description;
+if (!string.IsNullOrEmpty(desc))
+    _rowDescs.Add((rowGO.GetComponent<RectTransform>(), desc));
+
+// Update 中每帧检测：
+Vector2 mousePos = Input.mousePosition;
+foreach (var (rt, desc) in _rowDescs)
+{
+    if (rt != null && RectTransformUtility.RectangleContainsScreenPoint(rt, mousePos))
+    {
+        _descText.text = I18n.T(desc);
+        return;
+    }
+}
+```
+
+**优势**：
+- 不添加任何组件到子元素，ScrollRect 的拖拽/滚轮事件不受影响
+- 不依赖 EventSystem 事件冒泡（IL2CPP 下不可靠）
+- 可加防抖逻辑（见下节），避免快速移动时描述文本频繁闪烁
+
+---
+
+## 12. 悬停描述的防抖模式
+
+**问题**：悬停行实时更新底部描述文本，用户移动鼠标时描述快速切换，吸引注意力造成干扰。
+
+**方案**：追踪当前悬停行，鼠标移到新行时重置计时器，停留 0.3s 后才更新文本。鼠标在行间间隙时保持上一条描述（不清空），离开 viewport 时立即清空。
+
+```csharp
+private static RectTransform _hoveredRow;
+private static float _hoverTimer;
+private const float HoverDelay = 0.3f;
+
+private static void UpdateHoverDesc()
+{
+    Vector2 mousePos = Input.mousePosition;
+
+    // 离开 viewport → 清空
+    if (!RectTransformUtility.RectangleContainsScreenPoint(_viewportRT, mousePos))
+    {
+        _descText.text = "";
+        _hoveredRow = null;
+        _hoverTimer = 0;
+        return;
+    }
+
+    // 查找命中行
+    RectTransform hitRow = null;
+    string hitDesc = null;
+    foreach (var (rt, desc) in _rowDescs)
+        if (rt != null && RectTransformUtility.RectangleContainsScreenPoint(rt, mousePos))
+        { hitRow = rt; hitDesc = desc; break; }
+
+    if (hitRow == null) return; // 间隙 → 保持当前文本
+
+    if (hitRow != _hoveredRow)  // 行变了 → 重置计时
+    { _hoveredRow = hitRow; _hoverTimer = 0; }
+
+    _hoverTimer += Time.unscaledDeltaTime; // 用 unscaledDeltaTime 避免暂停影响
+    if (_hoverTimer >= HoverDelay)
+        _descText.text = I18n.T(hitDesc);
+}
+```
+
+---
+
+## 13. ScrollRect 滚轮需要手动处理
+
+**问题**：ScrollRect 自带 `scrollSensitivity` 属性，但在 IL2CPP 环境下鼠标滚轮事件不能可靠地冒泡到 ScrollRect（子控件的 Image raycast target 可能拦截事件）。
+
+**方案**：在 Update 中手动读取 `Input.mouseScrollDelta.y`，直接调整 `ScrollRect.verticalNormalizedPosition`。按像素量换算为归一化位置，滚动速度与内容量无关。
+
+```csharp
+private static void HandleScrollWheel()
+{
+    if (_scrollRect == null) return;
+
+    float scroll = Input.mouseScrollDelta.y;
+    if (scroll == 0) return;
+
+    // 仅鼠标在 viewport 内时响应
+    if (!RectTransformUtility.RectangleContainsScreenPoint(_viewportRT, Input.mousePosition))
+        return;
+
+    // 40px per scroll notch, normalized by scrollable range
+    float contentH = _scrollRect.content.rect.height;
+    float viewportH = _scrollRect.viewport.rect.height;
+    float range = contentH - viewportH;
+    if (range <= 0) return;
+
+    _scrollRect.verticalNormalizedPosition = Mathf.Clamp01(
+        _scrollRect.verticalNormalizedPosition + scroll * 40f / range);
+}
+```
+
+**注意**：`verticalNormalizedPosition` 为 1 时在顶部，0 时在底部。`mouseScrollDelta.y > 0` 表示向上滚（显示上方内容），对应 `+= scroll`。
+
+---
+
 ## 开发 Checklist
 
 在 IL2CPP 环境下开发 uGUI 时，对照检查：
@@ -374,6 +489,9 @@ if (isChinese != _legendLangChinese)
 - [ ] 需要自定义图标时，使用 Texture2D 像素绘制 + Sprite.Create()，不嵌入外部资源
 - [ ] I18n key 使用空格分词的英文（如 `"Catchable Fish"`），因为英文模式下 key 直接作为显示文本
 - [ ] 包含 I18n 文本的 UI 实现了语言即时切换（检测 `IsChinese()` 变化 → 重建或刷新）
+- [ ] **不要在 ScrollRect 子元素上使用 EventTrigger**——会吞掉滚轮/拖拽事件，改用 RectTransform 命中测试
+- [ ] 悬停反馈加防抖（0.3s 延迟），避免快速移动时 UI 频繁闪烁
+- [ ] ScrollRect 滚轮在 IL2CPP 下不可靠，需手动处理 `Input.mouseScrollDelta`
 
 ---
 
