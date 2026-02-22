@@ -5,6 +5,7 @@ using DaveDiverExpansion.Helpers;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -111,6 +112,7 @@ public static class DiveMap
 
         Plugin.Log.LogInfo("DiveMap initialized (toggle big map: " + ToggleKey.Value + ")");
     }
+
 }
 
 /// <summary>
@@ -208,7 +210,9 @@ public class DiveMapBehaviour : MonoBehaviour
     private Image _borderImage;
     private RectTransform _markerPanel;
     private GameObject _legendPanel;  // big map legend (color/shape key)
+    private GameObject _helpPanel;   // big map controls help text
     private List<(Text text, string key)> _legendTexts; // cached for language refresh
+    private List<(Text text, string key)> _helpTexts;   // cached for language refresh
     private bool _legendLangChinese = true; // init to opposite of likely default to force first refresh
 
     // Markers (UI image pools)
@@ -238,6 +242,15 @@ public class DiveMapBehaviour : MonoBehaviour
     // State
     private bool _showBigMap;
     private bool _lastBigMap;     // tracks mode for SetMarkerSizes dirty check
+
+    // Big map interaction (zoom + pan)
+    private float _bigMapZoom = 1f;        // 1=full level, 10=max zoom
+    private Vector2 _bigMapPanCenter;      // camera center (world coords)
+    private bool _isDragging;
+    private Vector2 _dragStartMouse;       // drag start mouse position (screen coords)
+    private Vector2 _dragStartPan;         // drag start pan center
+    private bool _combatActionsDisabled;
+    private InputAction _meleeAction;
     private bool _wasInGame;
     private float _scanTimer;
     private float _levelAspect;   // full level width/height
@@ -277,6 +290,7 @@ public class DiveMapBehaviour : MonoBehaviour
         if (_oreCache == null) _oreCache = new List<(Vector3, Color, MarkerShape)>();
         if (_nightOverlayRenderers == null) _nightOverlayRenderers = new List<Renderer>();
         if (_legendTexts == null) _legendTexts = new List<(Text, string)>();
+        if (_helpTexts == null) _helpTexts = new List<(Text, string)>();
         if (_fishDebugLogged == null) _fishDebugLogged = new HashSet<string>();
     }
 
@@ -300,7 +314,7 @@ public class DiveMapBehaviour : MonoBehaviour
             if (Input.GetKeyDown(KeyCode.Escape) && _showBigMap)
             {
                 _showBigMap = false;
-                Plugin.Log.LogInfo("DiveMap: big map closed via ESC");
+                                Plugin.Log.LogInfo("DiveMap: big map closed via ESC");
             }
 
             // Check dive scene (use _instance to avoid auto-creation)
@@ -357,10 +371,11 @@ public class DiveMapBehaviour : MonoBehaviour
             }
 
             // Hide map during cutscenes / scripted actions
+            // Skip IsActionLock check when we own the input lock (big map open)
             var player = Singleton<InGameManager>._instance?.playerCharacter;
             if (player != null && (player.IsScenarioPlaying || player.IsActionLock))
             {
-                if (_showBigMap) _showBigMap = false;
+                if (_showBigMap) { _showBigMap = false; }
                 _canvasGO?.SetActive(false);
                 return;
             }
@@ -368,7 +383,15 @@ public class DiveMapBehaviour : MonoBehaviour
             if (toggled)
             {
                 _showBigMap = !_showBigMap;
-                Plugin.Log.LogInfo($"DiveMap: big map {(_showBigMap ? "ON" : "OFF")}");
+                if (_showBigMap)
+                {
+                    _bigMapZoom = 1f;
+                    _bigMapPanCenter = new Vector2(
+                        (_boundsMin.x + _boundsMax.x) / 2f,
+                        (_boundsMin.y + _boundsMax.y) / 2f);
+                    _isDragging = false;
+                }
+                                Plugin.Log.LogInfo($"DiveMap: big map {(_showBigMap ? "ON" : "OFF")}");
             }
 
             // Create map lazily
@@ -382,6 +405,19 @@ public class DiveMapBehaviour : MonoBehaviour
 
             if (_canvasGO != null) _canvasGO.SetActive(true);
 
+            // Block combat actions only when mouse is inside the big map container
+            if (_showBigMap && _containerRT != null)
+            {
+                bool mouseInMap = RectTransformUtility.RectangleContainsScreenPoint(
+                    _containerRT, Input.mousePosition, null);
+                SetCombatActionsEnabled(!mouseInMap);
+            }
+            else if (_combatActionsDisabled)
+            {
+                SetCombatActionsEnabled(true);
+            }
+
+            if (_showBigMap) HandleBigMapInput();
             UpdateCamera();
             ApplyLayout();
 
@@ -612,6 +648,223 @@ public class DiveMapBehaviour : MonoBehaviour
     }
 
     /// <summary>
+    /// Disable Fire/Melee/Grab InputActions to prevent combat while big map is open.
+    /// Uses Unity InputSystem directly — finds actions from player's InputActionAsset.
+    /// </summary>
+    private void SetCombatActionsEnabled(bool enabled)
+    {
+        try
+        {
+            if (enabled && !_combatActionsDisabled) return;  // already enabled
+            if (!enabled && _combatActionsDisabled) return;  // already disabled
+
+            // Lazy-find actions from player's inputAsset
+            if (_meleeAction == null)
+            {
+                var player = Singleton<InGameManager>._instance?.playerCharacter;
+                if (player == null) return;
+                var drAsset = player.inputAsset;
+                if (drAsset == null) return;
+
+                // DRInputAsset → Entry (offset 0x18) → InputActionAsset
+                var entryPtr = Marshal.ReadIntPtr(drAsset.Pointer, 0x18);
+                if (entryPtr == System.IntPtr.Zero) return;
+                var entry = new DRInput.DRInputAsset.DRInputAssetEntry(entryPtr);
+                var actionAsset = entry.inputActionAsset;
+                if (actionAsset == null)
+                {
+                    Plugin.Log.LogWarning("[DiveMap] Could not get InputActionAsset from entry");
+                    return;
+                }
+
+                var inGameMap = actionAsset.FindActionMap("InGame", false);
+                if (inGameMap == null)
+                {
+                    Plugin.Log.LogWarning("[DiveMap] Could not find InGame action map");
+                    return;
+                }
+
+                _meleeAction = inGameMap.FindAction("Melee", false);
+                Plugin.Log.LogInfo($"[DiveMap] InputAction found: Melee={_meleeAction != null}");
+            }
+
+            if (!enabled)
+            {
+                _meleeAction?.Disable();
+                _combatActionsDisabled = true;
+            }
+            else
+            {
+                _meleeAction?.Enable();
+                _combatActionsDisabled = false;
+            }
+        }
+        catch (System.Exception e)
+        {
+            Plugin.Log.LogError($"[DiveMap] SetCombatActionsEnabled({enabled}) failed: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Handles scroll-wheel zoom and mouse-drag panning for the big map.
+    /// Called every frame when _showBigMap is true, before UpdateCamera().
+    /// </summary>
+    private void HandleBigMapInput()
+    {
+        // Scroll zoom — only when mouse is over the map container
+        float scroll = Input.mouseScrollDelta.y;
+        if (scroll != 0f && IsMouseOverContainer())
+        {
+            float oldZoom = _bigMapZoom;
+            float factor = scroll > 0 ? 1.25f : 1f / 1.25f;
+            _bigMapZoom = Mathf.Clamp(_bigMapZoom * factor, 1f, 10f);
+
+            // Zoom toward mouse cursor: keep the world point under the cursor stationary
+            var mouseWorld = ScreenToMapWorld(Input.mousePosition);
+            if (mouseWorld.HasValue)
+            {
+                _bigMapPanCenter = mouseWorld.Value +
+                    (_bigMapPanCenter - mouseWorld.Value) * (oldZoom / _bigMapZoom);
+            }
+            ClampPanCenter();
+        }
+
+        // Mouse drag
+        if (Input.GetMouseButtonDown(0) && IsMouseOverContainer())
+        {
+            _isDragging = true;
+            _dragStartMouse = (Vector2)Input.mousePosition;
+            _dragStartPan = _bigMapPanCenter;
+        }
+
+        if (_isDragging)
+        {
+            if (Input.GetMouseButton(0))
+            {
+                Vector2 screenDelta = (Vector2)Input.mousePosition - _dragStartMouse;
+                Vector2 worldDelta = ScreenDeltaToWorldDelta(screenDelta);
+                _bigMapPanCenter = _dragStartPan - worldDelta; // reverse: drag right → view moves left
+                ClampPanCenter();
+            }
+            else
+            {
+                _isDragging = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns true if the mouse cursor is within the _containerRT screen rect.
+    /// </summary>
+    private bool IsMouseOverContainer()
+    {
+        if (_containerRT == null) return false;
+        Vector2 localPoint;
+        var canvas = _canvasGO?.GetComponent<Canvas>();
+        if (canvas == null) return false;
+        return RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            _containerRT, Input.mousePosition, canvas.worldCamera, out localPoint) &&
+            _containerRT.rect.Contains(localPoint);
+    }
+
+    /// <summary>
+    /// Converts a screen position to world coordinates on the map.
+    /// Maps screen → container local normalized [0,1] → _viewMin/_viewMax interpolation.
+    /// Returns null if the point is outside the container.
+    /// </summary>
+    private Vector2? ScreenToMapWorld(Vector3 screenPos)
+    {
+        if (_containerRT == null) return null;
+        var canvas = _canvasGO?.GetComponent<Canvas>();
+        if (canvas == null) return null;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            _containerRT, screenPos, canvas.worldCamera, out var localPoint))
+            return null;
+
+        var rect = _containerRT.rect;
+        float nx = (localPoint.x - rect.xMin) / rect.width;
+        float ny = (localPoint.y - rect.yMin) / rect.height;
+
+        // Account for uvRect crop (big map crops square texture to level aspect)
+        Rect uv = _mapImage != null ? _mapImage.uvRect : new Rect(0, 0, 1, 1);
+        float uvX = uv.x + nx * uv.width;
+        float uvY = uv.y + ny * uv.height;
+
+        // UV [0,1] maps to camera's full square view (orthographicSize in both axes)
+        float bigOrthoBase = Mathf.Max(_fullOrthoSize, _fullOrthoSize * _levelAspect);
+        float bigOrtho = bigOrthoBase / _bigMapZoom;
+        float worldX = _bigMapPanCenter.x + (uvX - 0.5f) * 2f * bigOrtho;
+        float worldY = _bigMapPanCenter.y + (uvY - 0.5f) * 2f * bigOrtho;
+
+        return new Vector2(worldX, worldY);
+    }
+
+    /// <summary>
+    /// Converts a screen-space pixel delta to world-space distance delta.
+    /// </summary>
+    private Vector2 ScreenDeltaToWorldDelta(Vector2 screenDelta)
+    {
+        if (_containerRT == null) return Vector2.zero;
+        var rect = _containerRT.rect;
+
+        // Container pixel size in scaled canvas units
+        float containerW = rect.width;
+        float containerH = rect.height;
+        if (containerW <= 0 || containerH <= 0) return Vector2.zero;
+
+        // Account for canvas scaling (CanvasScaler ScaleWithScreenSize)
+        var canvas = _canvasGO?.GetComponent<Canvas>();
+        float scaleFactor = canvas != null ? canvas.scaleFactor : 1f;
+        float scaledDeltaX = screenDelta.x / scaleFactor;
+        float scaledDeltaY = screenDelta.y / scaleFactor;
+
+        // View world size (what's visible through the uvRect crop)
+        float viewW = _viewMax.x - _viewMin.x;
+        float viewH = _viewMax.y - _viewMin.y;
+        if (viewW <= 0 || viewH <= 0) return Vector2.zero;
+
+        return new Vector2(
+            scaledDeltaX * viewW / containerW,
+            scaledDeltaY * viewH / containerH);
+    }
+
+    /// <summary>
+    /// Clamps _bigMapPanCenter so the camera view doesn't go beyond level bounds.
+    /// When view is larger than level in an axis, centers on that axis.
+    /// </summary>
+    private void ClampPanCenter()
+    {
+        float bigOrthoBase = Mathf.Max(_fullOrthoSize, _fullOrthoSize * _levelAspect);
+        float bigOrtho = bigOrthoBase / _bigMapZoom;
+
+        // Visible half-extents after uvRect crop
+        float halfW, halfH;
+        if (_levelAspect >= 1f)
+        {
+            halfW = bigOrtho;           // square tex, full width
+            halfH = bigOrtho / _levelAspect;  // cropped height
+        }
+        else
+        {
+            halfW = bigOrtho * _levelAspect;  // cropped width
+            halfH = bigOrtho;           // square tex, full height
+        }
+
+        float levelW = _boundsMax.x - _boundsMin.x;
+        float levelH = _boundsMax.y - _boundsMin.y;
+
+        if (halfW * 2 >= levelW)
+            _bigMapPanCenter.x = (_boundsMin.x + _boundsMax.x) / 2f;
+        else
+            _bigMapPanCenter.x = Mathf.Clamp(_bigMapPanCenter.x, _boundsMin.x + halfW, _boundsMax.x - halfW);
+
+        if (halfH * 2 >= levelH)
+            _bigMapPanCenter.y = (_boundsMin.y + _boundsMax.y) / 2f;
+        else
+            _bigMapPanCenter.y = Mathf.Clamp(_bigMapPanCenter.y, _boundsMin.y + halfH, _boundsMax.y - halfH);
+    }
+
+    /// <summary>
     /// Updates camera position and orthoSize based on current mode.
     /// Minimap: follow player, zoomed in. Big map: full level overview.
     /// </summary>
@@ -621,15 +874,24 @@ public class DiveMapBehaviour : MonoBehaviour
 
         if (_showBigMap)
         {
-            // Full level view — ortho must cover entire level in both axes (square texture)
-            float bigOrtho = Mathf.Max(_fullOrthoSize, _fullOrthoSize * _levelAspect);
+            // Zoomable/pannable view — ortho shrinks as zoom increases
+            float bigOrthoBase = Mathf.Max(_fullOrthoSize, _fullOrthoSize * _levelAspect);
+            float bigOrtho = bigOrthoBase / _bigMapZoom;
             _mapCamera.orthographicSize = bigOrtho;
-            float cx = (_boundsMin.x + _boundsMax.x) / 2f;
-            float cy = (_boundsMin.y + _boundsMax.y) / 2f;
-            _mapCamera.transform.position = new Vector3(cx, cy, _cameraZ);
+            _mapCamera.transform.position = new Vector3(_bigMapPanCenter.x, _bigMapPanCenter.y, _cameraZ);
 
-            _viewMin = _boundsMin;
-            _viewMax = _boundsMax;
+            // _viewMin/_viewMax = uvRect-cropped visible world area
+            float half = bigOrtho; // square texture: halfW = halfH = ortho
+            if (_levelAspect >= 1f)
+            {
+                _viewMin = new Vector2(_bigMapPanCenter.x - half, _bigMapPanCenter.y - half / _levelAspect);
+                _viewMax = new Vector2(_bigMapPanCenter.x + half, _bigMapPanCenter.y + half / _levelAspect);
+            }
+            else
+            {
+                _viewMin = new Vector2(_bigMapPanCenter.x - half * _levelAspect, _bigMapPanCenter.y - half);
+                _viewMax = new Vector2(_bigMapPanCenter.x + half * _levelAspect, _bigMapPanCenter.y + half);
+            }
         }
         else
         {
@@ -718,6 +980,7 @@ public class DiveMapBehaviour : MonoBehaviour
         }
 
         CreateLegend(containerGO);
+        CreateHelpPanel(containerGO);
     }
 
     private Image CreateMarker(string name, Color color, float size, MarkerShape shape = MarkerShape.Circle)
@@ -772,8 +1035,10 @@ public class DiveMapBehaviour : MonoBehaviour
                 {
                     _legendLangChinese = isChinese;
                     RefreshLegendTexts();
+                    RefreshHelpTexts();
                 }
             }
+            if (_helpPanel != null) _helpPanel.SetActive(true);
             if (modeChanged)
             {
                 EnsureTextureSize(TexBigHeight);
@@ -783,6 +1048,7 @@ public class DiveMapBehaviour : MonoBehaviour
         else
         {
             if (_legendPanel != null) _legendPanel.SetActive(false);
+            if (_helpPanel != null) _helpPanel.SetActive(false);
             // Hide canvas when minimap is disabled and big map is off
             if (!DiveMap.MiniMapEnabled.Value)
             {
@@ -1109,7 +1375,6 @@ public class DiveMapBehaviour : MonoBehaviour
     private void Cleanup()
     {
         EnsureLists();
-
         if (_mapCamera != null)
         {
             _mapCamera.targetTexture = null;
@@ -1133,7 +1398,9 @@ public class DiveMapBehaviour : MonoBehaviour
         _containerRT = null;
         _markerPanel = null;
         _legendPanel = null;
+        _helpPanel = null;
         _legendTexts?.Clear();
+        _helpTexts?.Clear();
         _legendLangChinese = true;
         _playerMarker = null;
         _escapeMarkers.Clear();
@@ -1148,8 +1415,13 @@ public class DiveMapBehaviour : MonoBehaviour
         _fishDebugLogged?.Clear();
         _chestDebugDone = false;
         _cachedEntityCount = 0;
+                SetCombatActionsEnabled(true);
+        _combatActionsDisabled = false;
+        _meleeAction = null;
         _showBigMap = false;
         _lastBigMap = false;
+        _bigMapZoom = 1f;
+        _isDragging = false;
         _currentTexSize = 0;
         _scanTimer = 0f;
         _prevEscapeIdx = 0;
@@ -1322,6 +1594,96 @@ public class DiveMapBehaviour : MonoBehaviour
     {
         if (_legendTexts == null) return;
         foreach (var (text, key) in _legendTexts)
+        {
+            if (text != null) text.text = I18n.T(key);
+        }
+    }
+
+    /// <summary>
+    /// Creates a small panel above the legend showing map controls (scroll to zoom, drag to pan, etc.).
+    /// Anchored to the right edge of the map container, positioned above the legend.
+    /// </summary>
+    private void CreateHelpPanel(GameObject container)
+    {
+        EnsureLists();
+        _helpTexts.Clear();
+
+        _helpPanel = CreateUIObject("HelpPanel", container);
+        var helpRT = _helpPanel.GetComponent<RectTransform>();
+        // Same anchor as legend: right edge, vertically centered
+        helpRT.anchorMin = new Vector2(1f, 0.5f);
+        helpRT.anchorMax = new Vector2(1f, 0.5f);
+        helpRT.pivot = new Vector2(0f, 0.5f);
+
+        var helpBg = _helpPanel.AddComponent<Image>();
+        helpBg.color = new Color(0.05f, 0.05f, 0.1f, 0.85f);
+
+        var lines = new (string key, string symbol)[]
+        {
+            ("Scroll to Zoom", "\u2195"),    // ↕
+            ("Drag to Pan",    "\u2922"),     // ⤢
+            ("Close",          "M / ESC"),
+        };
+
+        const float padX = 8f;
+        const float padY = 6f;
+        const float rowH = 16f;
+        const float symW = 46f;
+        const float textW = 80f;
+        const float gap = 4f;
+        float totalH = padY * 2 + lines.Length * rowH;
+        float totalW = padX * 2 + symW + gap + textW;
+
+        // Legend: 10 entries * 18 rowH + 12 pad = 192 total height, centered at anchor
+        float legendH = 192f;
+        float helpY = legendH / 2f + 6f + totalH / 2f; // legend top + gap + help center
+
+        helpRT.sizeDelta = new Vector2(totalW, totalH);
+        helpRT.anchoredPosition = new Vector2(6f, helpY);
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            float yPos = totalH - padY - rowH * (i + 0.5f);
+
+            // Symbol / shortcut label
+            var symGO = CreateUIObject("HSym_" + i, _helpPanel);
+            var symRT = symGO.GetComponent<RectTransform>();
+            symRT.anchorMin = Vector2.zero;
+            symRT.anchorMax = Vector2.zero;
+            symRT.pivot = new Vector2(0f, 0.5f);
+            symRT.sizeDelta = new Vector2(symW, rowH);
+            symRT.anchoredPosition = new Vector2(padX, yPos);
+            var symText = symGO.AddComponent<Text>();
+            symText.text = lines[i].symbol;
+            symText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            symText.fontSize = 11;
+            symText.color = new Color(0.7f, 0.8f, 1f);
+            symText.alignment = TextAnchor.MiddleLeft;
+
+            // Description
+            var descGO = CreateUIObject("HTxt_" + i, _helpPanel);
+            var descRT = descGO.GetComponent<RectTransform>();
+            descRT.anchorMin = Vector2.zero;
+            descRT.anchorMax = Vector2.zero;
+            descRT.pivot = new Vector2(0f, 0.5f);
+            descRT.sizeDelta = new Vector2(textW, rowH);
+            descRT.anchoredPosition = new Vector2(padX + symW + gap, yPos);
+            var descText = descGO.AddComponent<Text>();
+            descText.text = I18n.T(lines[i].key);
+            descText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            descText.fontSize = 11;
+            descText.color = new Color(0.75f, 0.75f, 0.75f);
+            descText.alignment = TextAnchor.MiddleLeft;
+            _helpTexts.Add((descText, lines[i].key));
+        }
+
+        _helpPanel.SetActive(false);
+    }
+
+    private void RefreshHelpTexts()
+    {
+        if (_helpTexts == null) return;
+        foreach (var (text, key) in _helpTexts)
         {
             if (text != null) text.text = I18n.T(key);
         }

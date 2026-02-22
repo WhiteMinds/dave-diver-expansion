@@ -43,7 +43,7 @@ bash scripts/update-lib.sh
     ├── Features/
     │   ├── AutoPickup.cs          # 自动拾取（读取 EntityRegistry）
     │   ├── ConfigUI.cs            # uGUI 配置面板 (F1)
-    │   ├── DiveMap.cs             # 潜水地图 HUD (M 键大地图, 小地图可配置位置)
+    │   ├── DiveMap.cs             # 潜水地图 HUD (M 键大地图 + 缩放拖拽, 小地图可配置位置)
     │   └── QuickSceneSwitch.cs    # 快速场景切换 (F2)
     └── Helpers/
         ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期补丁

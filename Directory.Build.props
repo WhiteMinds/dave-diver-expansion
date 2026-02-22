@@ -8,6 +8,7 @@
     <TargetFramework>net480</TargetFramework>
     <Platforms>AnyCPU</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- Resolve reference DLL paths: GamePath (local dev) or lib/ fallback (CI) -->
@@ -84,6 +85,14 @@
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
       <HintPath>$(InteropPath)\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.InputSystem">
+      <HintPath>$(InteropPath)\Unity.InputSystem.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="InputSystemWrapper">
+      <HintPath>$(InteropPath)\InputSystemWrapper.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

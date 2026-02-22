@@ -443,7 +443,64 @@ catch { }
 
 ---
 
-## 10. 参考 Mod 项目
+## 10. InputSystem 与 Harmony 限制
+
+### ⛔ Harmony 无法拦截 InputSystem 回调方法
+
+游戏使用 Unity 新 InputSystem（`Unity.InputSystem.dll`）+ 自定义封装（`InputSystemWrapper.dll`）。玩家战斗输入通过 InputSystem action 回调触发：
+
+```
+InputAction.performed → PlayerCharacter.OnFire_Performed()
+InputAction.performed → PlayerCharacter.OnMelee_Performed()
+InputAction.performed → PlayerCharacter.OnGrab_Performed()
+```
+
+**这些回调方法的 CallerCount=0**（仅被 InputSystem 的 native delegate 调用），Harmony 的 Prefix/Postfix 补丁**完全不生效**——既不报错也不执行，静默失败。
+
+同样，`CanMeleeAttack` 属性 getter（CallerCount=1）在实测中也未被 Harmony 拦截，可能是 IL2CPP AOT 内联导致。
+
+### ⛔ `SetInputLock` / `ActionLock` 不可用于精细控制
+
+- `PlayerCharacter.SetInputLock(bool)` 会禁用**整个** Handler 组件（含移动），不是按 action 粒度
+- `ActionLock.availables` 数组在运行时为空（length=0），启用 ActionLock 后**所有操作**被锁定
+- `ActionLock.SetEnable(bool)` 本质是 `Behaviour.enabled = enable`，OnEnable 时调用 `inputAsset.Lock(this)`
+
+### ✅ 正确方案：直接禁用 InputAction
+
+通过 `player.inputAsset`（`DRInputAsset`）获取 Unity `InputActionAsset`，找到具体 `InputAction` 并调用 `Disable()`/`Enable()`：
+
+```csharp
+// DRInputAsset → Entry (offset 0x18) → DRInputAssetEntry.inputActionAsset
+var drAsset = player.inputAsset;
+var entryPtr = Marshal.ReadIntPtr(drAsset.Pointer, 0x18);
+var entry = new DRInput.DRInputAsset.DRInputAssetEntry(entryPtr);
+var actionAsset = entry.inputActionAsset; // Unity InputActionAsset
+
+var inGameMap = actionAsset.FindActionMap("InGame", false);
+var fireAction = inGameMap.FindAction("Fire", false);
+fireAction.Disable();  // 阻止 InputSystem 触发回调
+fireAction.Enable();   // 恢复
+```
+
+**引用要求**：`Directory.Build.props` 需添加 `Unity.InputSystem.dll` 和 `InputSystemWrapper.dll` 引用。
+
+### DRInputAsset 结构
+
+```
+DRInputAsset : InputAsset<SchemeName, MapName>
+├── ActionMap_Dave    — 地面操作 (Move, Interaction, Menu, ...)
+├── ActionMap_InGame  — 潜水操作 (Move, Aim, Fire, Melee, Grab, Item, ...)
+├── ActionMap_UI      — UI 操作 (Ok, Cancel, Navigation, ...)
+├── ActionMap_QTE     — QTE 操作
+└── ... (MiniGame, BattleQTE, Concert, etc.)
+```
+
+**ActionMap_InGame.ActionName 枚举**：
+`Move, Interaction, InteractionMouse, Aim, AimAxis, AimAxisMouse, Fire, Melee, Grab, QTE, Rotate, RotateMouse, Item, SwitchItem, SwitchWeapon, ActiveItem, Menu, AimAxisRight, ShortDash, BreakItem, LongDash, FireItem, MVMinimapInGame, QTE_Harpoon, MVCallTaxi, MVReturnTaxi, PDA, MoveP2, InteractionP2, Exploration`
+
+---
+
+## 11. 参考 Mod 项目
 
 | 项目 | 作者 | 功能 | 参考价值 |
 |------|------|------|----------|

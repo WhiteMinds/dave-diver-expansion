@@ -66,6 +66,10 @@ public static class I18n
         ["O2 Chest"] = "氧气箱",
         ["Material Chest"] = "材料箱",
         ["Ore"] = "矿石",
+        // Big map help panel
+        ["Scroll to Zoom"] = "滚轮缩放",
+        ["Drag to Pan"] = "拖拽平移",
+        ["Close"] = "关闭",
         ["TopRight"] = "右上",
         ["TopLeft"] = "左上",
         ["BottomRight"] = "右下",

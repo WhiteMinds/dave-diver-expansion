@@ -6,7 +6,7 @@
 
 | 类名 | 作用 | 关键方法 |
 |------|------|----------|
-| `PlayerCharacter` : `BaseCharacter` | 玩家角色控制器 | `Update()`, `FixedUpdate()`, `Awake()`, `IsActionLock`(bool), `IsScenarioPlaying`(bool), `SetActionLock(bool)`, `SetInputLock(bool)` |
+| `PlayerCharacter` : `BaseCharacter` | 玩家角色控制器 | `Update()`, `FixedUpdate()`, `Awake()`, `IsActionLock`(bool), `IsScenarioPlaying`(bool), `SetActionLock(bool)`, `SetInputLock(bool)` ⚠️锁全部, `inputAsset`(DRInputAsset), `OnFire_Performed()` ⚠️Harmony无效, `OnMelee_Performed()` ⚠️同上, `OnGrab_Performed()` ⚠️同上 |
 | `InGameManager` : `Singleton<InGameManager>` | 游戏管理器 | `playerCharacter` (获取玩家实例), `GetBoundary()` (当前子区域边界), `SubBoundsCollection` (所有子区域) |
 | `Singleton<T>` : `MonoBehaviour` | 单例基类 | `Instance` (静态属性) |
 | `SingletonNoMono<T>` : `Il2CppSystem.Object` | 非 MonoBehaviour 单例基类 | `Instance` (静态属性) |
@@ -144,6 +144,20 @@ Ore_Opal=0, Ore_Lead=1, Ore_Copper=2, Ore_Iron=3, Ore_Diamond=4, Ore_Amethyst=5,
 | `ScenarioManager` | `SetInputLock(bool)` | Scenario 专用 |
 
 **Mod 开发建议**：检查玩家是否可操作时，用 `player.IsActionLock || player.IsScenarioPlaying` 双重判断。
+
+### InputSystem 精细控制（禁用特定操作）
+
+`SetInputLock(bool)` 和 `ActionLock` 系统都只能锁定全部输入。要精细控制（如只禁用战斗、保留移动），需直接操作 Unity `InputAction`：
+
+| 类 | 命名空间 | 作用 |
+|---|---|---|
+| `DRInputAsset` | `DRInput` | 游戏 InputAsset 封装，含 ActionMap_Dave/InGame/UI 等嵌套类型 |
+| `DRInputAsset.DRInputAssetEntry` | `DRInput` | Entry 内部类，提供 `inputActionAsset` 属性返回 Unity `InputActionAsset` |
+| `InputActionAsset` | `UnityEngine.InputSystem` | Unity InputSystem 核心类，`FindActionMap(string)` |
+| `InputActionMap` | `UnityEngine.InputSystem` | action map，`FindAction(string)` 返回 `InputAction` |
+| `InputAction` | `UnityEngine.InputSystem` | 单个 action，`Disable()` / `Enable()` 控制是否触发回调 |
+
+详见 [docs/game-internals.md](game-internals.md) § InputSystem 与 Harmony 限制。
 
 ## PickupInstanceItem 物品系统
 
