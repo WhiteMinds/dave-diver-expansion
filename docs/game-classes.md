@@ -1,0 +1,185 @@
+# 游戏类参考表
+
+已确认的关键游戏类（通过 ilspycmd 反编译验证）。
+
+## 核心类
+
+| 类名 | 作用 | 关键方法 |
+|------|------|----------|
+| `PlayerCharacter` : `BaseCharacter` | 玩家角色控制器 | `Update()`, `FixedUpdate()`, `Awake()`, `IsActionLock`(bool), `IsScenarioPlaying`(bool), `SetActionLock(bool)`, `SetInputLock(bool)` |
+| `InGameManager` : `Singleton<InGameManager>` | 游戏管理器 | `playerCharacter` (获取玩家实例), `GetBoundary()` (当前子区域边界), `SubBoundsCollection` (所有子区域) |
+| `Singleton<T>` : `MonoBehaviour` | 单例基类 | `Instance` (静态属性) |
+| `SingletonNoMono<T>` : `Il2CppSystem.Object` | 非 MonoBehaviour 单例基类 | `Instance` (静态属性) |
+| `DataManager` : `Singleton<DataManager>` | 数据管理器 | `GetText(ref string textID)`（静态+实例两种） |
+
+## 交互 & 物品类
+
+| 类名 | 作用 | 关键方法 |
+|------|------|----------|
+| `FishInteractionBody` | 可交互的鱼 | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `InteractionType` |
+| `PickupInstanceItem` | 掉落物品基类（所有可拾取物品） | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `isNeedSwapSetID`, `usePreset`, `GetItemID()` |
+| `InstanceItemChest` | 宝箱 | `SuccessInteract(BaseCharacter)`, `IsOpen` |
+| `CrabTrapZone` | 捕蟹笼区域 | `CheckAvailableInteraction(BaseCharacter)`, `SetUpCrabTrap(int)` |
+| `OxygenArea` | 氧气补充区域 | `minHP`, `chargeTime`, `isCharging`（注意：不在宝箱上） |
+| `FishInteractionBody` 内部枚举 | 鱼交互类型 | `FishInteractionType`: None=0, Carving=1, Pickup=2, Calldrone=3 |
+
+## 鱼 AI 类
+
+| 类名 | 作用 | 关键方法 |
+|------|------|----------|
+| `DR.AI.SABaseFishSystem` : `SpecialAttackerFishAISystem` | 鱼 AI 系统 | 所有鱼都有此组件。`FishAIData`(SAFishData)、`IsAggressive`(virtual bool)。**注意**：继承链依赖 `Sirenix.Serialization`，interop 中缺少 `SerializedScriptableObject` 包装类，**不能直接用 `GetComponent<SABaseFishSystem>()`**，需通过 IL2CPP 低级 API 访问 |
+| `DR.AI.AwayFromTarget` : `AIAbility` | 逃跑 AI 能力 | 大多数非攻击性鱼有此组件。**但部分攻击性鱼也有**（如虾、海马、鱿鱼），不能仅凭此判断攻击性 |
+| `SAFishData` : `SerializedScriptableObject` | 鱼配置数据 | `AggressionType`(FishAggressionType 枚举)、`PeckingOrder`(int)。通过 `SABaseFishSystem.FishAIData` 访问 |
+
+### 鱼攻击性检测（FishAggressionType）
+
+通过 IL2CPP 低级 API 读取 `SABaseFishSystem.FishAIData.AggressionType` 字段值。
+
+`FishAggressionType` 枚举：`None=0, OnlyRun=1, Attack=2, Custom=3, Neutral=4, OnlyMoveWaypoint=5`
+
+判定逻辑：
+- `Attack(2)` → 攻击性
+- `Custom(3) + 无 AwayFromTarget` → 攻击性
+- `Custom(3) + 有 AwayFromTarget` → 可捕捉生物（虾、海马等）
+- 其余 → 非攻击性
+- ⚠️ **不能仅用 `AwayFromTarget == null` 判断**：鱿鱼有 AwayFromTarget 但实为攻击性
+
+已验证的鱼种分类（日志实测）：
+
+| AggressionType | AwayFromTarget | 鱼种举例 | 地图颜色 |
+|---|---|---|---|
+| Attack | 无 | 鲨鱼、海鳗、狮子鱼、梭鱼、水母 | 红 |
+| Attack | 有 | 长枪乌贼、洪堡鱿鱼 | 红 |
+| Custom | 无 | 河豚、鹦鹉螺 | 红 |
+| Custom | 有 | 白对虾、黑虎虾、海马 | 浅绿 |
+| OnlyRun | 有 | 大多数普通鱼 | 蓝 |
+| OnlyMoveWaypoint | 无 | 金枪鱼（路径移动） | 蓝 |
+
+**IL2CPP 低级 API 读取方式**（绕过 Sirenix 类型引用限制）：
+
+```csharp
+// 缓存类指针和字段偏移（只需初始化一次）
+var classPtr = IL2CPP.GetIl2CppClass("Assembly-CSharp.dll", "DR.AI", "SABaseFishSystem");
+var fieldPtr = IL2CPP.GetIl2CppField(classPtr, "FishAIData");
+var dataClassPtr = IL2CPP.GetIl2CppClass("Assembly-CSharp.dll", "", "SAFishData");
+var aggrFieldPtr = IL2CPP.GetIl2CppField(dataClassPtr, "AggressionType");
+// 读取：遍历 GetComponents<Component>() 找到 SABaseFishSystem（通过 GetIl2CppType().FullName 匹配）
+// 然后用 Marshal.ReadIntPtr / Marshal.ReadInt32 + il2cpp_field_get_offset 读取字段值
+```
+
+## 相机 & 场景类
+
+| 类名 | 作用 | 关键方法 |
+|------|------|----------|
+| `OrthographicCameraManager` : `Singleton<>` | 主相机管理器 | `m_Camera`（主 Camera）。注意：`m_BottomLeftPivot`/`m_TopRightPivot` 在 `CalculateCamerabox()` 前为 (0,0)，不可靠 |
+| `DR.CameraSubBoundsCollection` | 相机子区域集合 | `m_BoundsList`（`List<CameraSubBounds>`）。通过 `InGameManager.SubBoundsCollection` 访问 |
+| `DR.CameraSubBounds` | 单个相机子区域 | `Bounds`（Unity `Bounds`，含 center/size/min/max） |
+| `Interaction.Escape.EscapePodZone` | 逃生舱区域 | `transform.position`，`OnTriggerEnter2D`，标准潜水场景约 9 个 |
+| `Interaction.Escape.EscapeMirror` | 逃生镜区域 | `transform.position`，`IsAvaiableUseMirror()`，冰川区域可能有 |
+| `SceneLoader` | 场景加载器 | `k_SceneName_MermanVillage`（鲛人村场景名常量） |
+
+## UI & 场景切换类
+
+| 类名 | 作用 | 关键方法 |
+|------|------|----------|
+| `Common.Contents.MoveScenePanel` | 场景切换菜单面板 | `OnPlayerEnter(bool)`, `ShowList(bool)`, `OnOpen()`, `OnClick()`, `OnCancel()`, `IsOpened`, `IsEntered` |
+| `Common.Contents.MoveSceneTrigger` | 场景切换触发器（碰撞体） | `OnPlayerEnter(bool)`, 引用 `m_Panel`(MoveScenePanel) |
+| `Common.Contents.MoveSceneElement` | 场景切换菜单选项 | `sceneName`(枚举: Lobby/SuShi/Farm/FishFarm/SushiBranch/Dredge), `OnClick()`, `IsLocked`, `CheckUnlock()` |
+| `LobbyMainCanvasManager` : `Singleton<>` | Lobby 场景 UI 管理器 | `MoveScenePanel`(属性), `OnDREvent(DiveTriggerEvent)` |
+| `DiveTrigger` | 潜水出发触发器 | `m_Panel`(LobbyStartGamePanelUI), `OnPlayerEnter(bool)` |
+| `LobbyStartGamePanelUI` | 潜水出发面板（长按出发） | `Activate(bool)`, `StartGame(StartParameter)`, `StartGameByMirror(string, SceneConnectLocationID)` |
+| `MainCanvasManager` : `Singleton<>` | 游戏内 UI 画布管理器 | `pausePopupPanel`(PausePopupMenuPanel), `quickPausePopup`(QuickPausePopup), `IsQuickPause`(bool) |
+| `PausePopupMenuPanel` : `BaseUI` | ESC 暂停菜单面板 | `OnPopup()`, `OnClickContinue()`, `OnClickSettings()`, `ShowReturnLobbyPanel()` 。检测是否打开：`gameObject.activeSelf` |
+| `BaseUI` : `MonoBehaviour` | 游戏 UI 面板基类 | `uiDepth` 字段 |
+
+## 语言 & 本地化类
+
+| 类名 | 作用 | 关键方法 |
+|------|------|----------|
+| `DR.Save.SaveUserOptions` : `SaveDataBase` | 用户设置（语言、音量、按键等） | `CurrentLanguage`, `CheckLanguage(SystemLanguage)` |
+| `DR.Save.Languages` | 游戏语言枚举 | `Chinese=6`, `ChineseTraditional=41`, `English=10` |
+| `FontManager` | 字体管理器 | `GetFont(SystemLanguage)`, `GetFontAsset(SystemLanguage)` |
+
+> 所有交互类使用 `OnTriggerEnter2D` 检测玩家碰撞，`SuccessInteract` 触发实际拾取。
+
+## 玩家状态锁定系统
+
+游戏通过多层锁定机制控制玩家操作：
+
+| 属性/系统 | 作用 | 过场动画期间 |
+|---|---|---|
+| `PlayerCharacter.IsScenarioPlaying` | 脚本剧情（cutscene/scenario）正在播放 | ✅ **实际生效** |
+| `PlayerCharacter.IsActionLock` | 动作锁定（对话、Boss 演出等） | ❌ 过场中不一定为 true |
+| `DRInput.ActionLock_*` | 输入层锁定（Player/UI/Shooting/InGame） | 底层系统 |
+| `InputLockBundlePopup` | 统一锁定管理：`LockPlayer()`, `LockAll()` 等 | 底层系统 |
+| `TimelineController` | `LockPlayerControl()` / `UnlockPlayerControl()` | Timeline 专用 |
+| `ScenarioManager` | `SetInputLock(bool)` | Scenario 专用 |
+
+**Mod 开发建议**：检查玩家是否可操作时，用 `player.IsActionLock || player.IsScenarioPlaying` 双重判断。
+
+## PickupInstanceItem 物品系统
+
+**关键发现**: 游戏中所有可拾取物品的 IL2CPP 运行时类型都是 `PickupInstanceItem`（包括武器）。区分物品类型只能通过 **prefab 名称**（`gameObject.name`），不能通过 C# 类型。
+
+**双对象机制**: 每个动态掉落物品（`usePreset=False`）在场景中存在 **两个** GameObject：
+- 一个 `isNeedSwapSetID = itemID`（"幽灵"标记对象，不可交互）
+- 一个 `isNeedSwapSetID = 0`（真正可拾取的对象）
+- 生成点固定物品（`usePreset=True`）只有一个对象（`swapSetID=0`）
+
+**Prefab 名称分类**:
+
+| Prefab 名称 | 类型 | usePreset | 可自动拾取 |
+|---|---|---|---|
+| `Loot_Wood`, `Loot_Rope`, `Loot_ShellFish*` 等 | 材料（生成点） | True | ✅ |
+| `BulletBox` | 弹药 | True | ✅ |
+| `Loot_Fragment` | 碎片 | True | ✅ |
+| `SeaWeedsTemplate` | 海藻 | False | ✅ |
+| `OreLootObject` | 矿石 | False | ✅ |
+| `SeaUrchinItem` | 海胆 | False | ✅ |
+| `SeasoningTemplate` | 调料 | False | ✅ |
+| `PickupUpgradeItemKit` | 升级套件 | False | ✅ |
+| `PickupInstanceMelee` | 近战武器 | False | ❌ 会触发换武器循环 |
+| `PickupInstanceWeapon` | 远程武器 | False | ❌ 会触发换武器循环 |
+| `PickupElecHarpoonHead` | 电鱼叉头 | False | ❌ 装备类 |
+| `PickupChainHarpoonHead` | 连锁鱼叉头 | False | ❌ 装备类 |
+
+**武器换装循环问题**: 自动拾取武器 → 触发 `SuccessInteract` → 游戏执行装备切换，掉落当前武器 → 新掉落的武器被自动拾取 → 无限循环。解决方案：按 prefab 名称黑名单跳过 `PickupInstance*` 和 `*HarpoonHead*`。
+
+**`UpgradeKitInstanceItem` 子类**: 是 `PickupInstanceItem` 的子类，调用 `GetItemID()` 会抛出 `NullReferenceException`，需要 try-catch 保护或避免调用。
+
+## 宝箱 prefab 名称分类
+
+- `Chest_O2(Clone)` — 浅海氧气宝箱
+- `Loot_ShellFish004(Clone)` — 深海氧气宝箱（也是 O2）
+- `Chest_Item(Clone)` — 普通物品箱 | `Chest_Weapon(Clone)` — 武器箱
+- `Chest_IngredientPot_A/B/C(Clone)` — 食材罐
+- `Chest_Rock(Clone)` — 岩石箱 | `Quest_Drone_*_Box` — 任务箱
+- `OxygenArea` 组件不在宝箱上（所有宝箱 `hasOxygenArea=False`），不能用于检测 O2 箱
+- O2 检测：`name.Contains("O2") || name.Contains("ShellFish004")`
+
+## 游戏语言系统
+
+- `DR.Save.SaveUserOptions.CurrentLanguage` 返回 `DR.Save.Languages` 枚举
+- `SaveUserOptions` 是序列化数据类（非 MonoBehaviour、非单例），需要通过 Harmony 补丁捕获实例或值
+- `SaveSystemUserOptionManager` 管理 SaveUserOptions 实例，但该类在 interop DLL 中无法被 ilspycmd 定位
+- 游戏广泛使用 `SystemLanguage`（Unity 内置枚举）处理字体、日期等
+- **⚠️ `get_CurrentLanguage` Harmony Postfix 会产生大量垃圾值**：IL2CPP 中该 getter 会被无关的 save-data 字段读取触发，返回 999、99999、17000 等无意义整数值。**不能**直接缓存最后一次返回值
+- Mod 获取游戏语言的推荐方式：Harmony 补丁 `SaveUserOptions.get_CurrentLanguage` 的 Postfix 中，仅当返回 `Chinese(6)` 或 `ChineseTraditional(41)` 时设置 `SeenChinese=true` 标记（可靠正信号），忽略所有其他值
+
+## 游戏场景切换系统
+
+Lobby/寿司店/农场等非潜水场景之间的切换：
+
+```
+MoveSceneTrigger (碰撞触发器，检测玩家进入)
+  ↓ OnPlayerEnter(true) → m_Panel.OnPlayerEnter(true)
+MoveScenePanel (UI 面板，显示可选场景列表)
+  ↓ ShowList(true) → 显示已解锁的 MoveSceneElement
+  ↓ OnOpen() / OnClick() → 选择场景
+MoveSceneElement (单个选项)
+  ↓ sceneName 枚举: Lobby, SuShi, Farm, FishFarm, SushiBranch, Dredge
+  ↓ OnClick() → CheckUnlock() → 执行场景切换
+```
+
+- 每个非潜水场景有各自的 `MoveScenePanel` 实例
+- 潜水出发是另一个系统：`DiveTrigger` → `LobbyStartGamePanelUI`（长按出发）

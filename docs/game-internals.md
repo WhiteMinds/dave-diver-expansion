@@ -278,10 +278,10 @@ SA_2010132_Thresher_Shark01(Clone):
 
 ### 区分攻击性鱼的方法
 
-**推荐**：检查 `DR.AI.AwayFromTarget` 组件的有无
-```csharp
-bool isAggressive = fish.GetComponent<DR.AI.AwayFromTarget>() == null;
-```
+> **⚠️ 已过时**：仅用 `AwayFromTarget == null` 判断攻击性是不准确的（鱿鱼有 AwayFromTarget 但实为攻击性）。
+> 更准确的方案请参见 [docs/game-classes.md](game-classes.md) § 鱼攻击性检测（FishAggressionType）。
+
+以下是早期基于组件的观察，仍有参考价值：
 
 | 鱼类型 | AwayFromTarget | 额外攻击组件 |
 |--------|----------------|-------------|
@@ -290,14 +290,7 @@ bool isAggressive = fish.GetComponent<DR.AI.AwayFromTarget>() == null;
 | 河豚 (Stellate_Puffer) | ❌ 无 | Damager, BodyDamager |
 | 海鳗 (Moray_Eel) | ❌ 无 | Attackable |
 
-### 宝箱类型识别
-
-通过 `gameObject.name` 区分：
-- `Chest_O2(Clone)` — 氧气宝箱
-- `Chest_Item(Clone)` — 道具宝箱
-- `Chest_Weapon(Clone)` — 武器宝箱
-- `Chest_Rock(Clone)` — 岩石宝箱
-- `Chest_IngredientPot_A/B/C(Clone)` — 食材罐
+> 宝箱/物品的 prefab 分类详见 [docs/game-classes.md](game-classes.md) § 宝箱 prefab 名称分类 / PickupInstanceItem 物品系统。
 
 ### 关卡边界
 
