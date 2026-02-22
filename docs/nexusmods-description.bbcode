@@ -108,6 +108,13 @@ You can also edit the config file directly:
 
 [size=3][b]Changelog[/b][/size]
 
+[b]v1.1.0[/b]
+[list]
+[*]AutoPickup: Safety checks for sea urchins (grab level check) and conditional fish (e.g. creatures requiring bug net) — prevents picking up items the player can't actually collect
+[*]I18n: Fixed auto language detection — now uses SaveSystem API directly instead of Harmony-patching auto-property getter (which produced garbage values under IL2CPP)
+[*]DiveMap: Fixed marker shapes (triangle, diamond, square) reverting to plain squares after scene change
+[/list]
+
 [b]v1.0.0[/b]
 [list]
 [*]DiveMap: Ore and mining node markers (pink diamonds) with dead/cleared filtering
