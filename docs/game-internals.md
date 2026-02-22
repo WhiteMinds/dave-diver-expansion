@@ -82,12 +82,19 @@ DR.Save.Languages (枚举)
 - Clear() : void
 ```
 
-### 访问链问题
+### 访问链
 
-`SaveUserOptions` 不是单例，不是 MonoBehaviour。实例由 `SaveSystemUserOptionManager` 持有，但：
-- `SaveSystemUserOptionManager` 不在 `ilspycmd -l type` 列表中（遍历全部 177 个 interop DLL 均无结果）
-- PowerShell 反射无法加载 interop DLL（缺少 IL2CPP 运行时依赖）
-- DLL 二进制中存在 "SaveSystemUserOptionManager" 字符串，但 decompiler 找不到类型定义
+`SaveUserOptions` 不是单例，不是 MonoBehaviour。通过 `SaveSystem` 单例间接访问：
+
+```
+Singleton<SaveSystem>._instance.UserOptionManager.CurrentLanguage
+```
+
+- `SaveSystem` : `Singleton<SaveSystem>` — 存档系统单例
+- `SaveSystem.UserOptionManager` : `SaveSystemUserOptionManager` — CallerCount=159，游戏各处广泛使用
+- `SaveSystemUserOptionManager.CurrentLanguage` — CallerCount=19，**带 fallback 逻辑**（Data 为 null 时自动用 `Application.systemLanguage`）
+
+注意：`SaveSystemUserOptionManager` 在 `ilspycmd -l type` 中找不到，但 `ilspycmd -t DR.Save.SaveSystemUserOptionManager` 可反编译。IsilDump 路径：`.tmp/cpp2il_out/IsilDump/Assembly-CSharp/DR/Save/SaveSystemUserOptionManager.txt`
 
 ### 游戏中的语言使用模式
 
@@ -99,21 +106,28 @@ DR.Save.Languages (枚举)
 
 ### Mod 获取语言的推荐方式
 
-**方案一：Harmony 补丁（推荐）**
+**✅ 直接调用 SaveSystem API（推荐）**
 ```csharp
-[HarmonyPatch(typeof(DR.Save.SaveUserOptions), "get_CurrentLanguage")]
-class LanguageCachePatch
+var saveSystem = Singleton<DR.Save.SaveSystem>._instance;
+if (saveSystem != null)
 {
-    static void Postfix(DR.Save.Languages __result)
+    var optMgr = saveSystem.UserOptionManager;
+    if (optMgr != null)
     {
-        // 游戏启动时，设置系统/字体系统/UI 都会读取此属性
-        // Postfix 自动缓存最新值
-        CachedLanguage = __result;
+        var lang = optMgr.CurrentLanguage;
+        // 内部逻辑：Data != null → 读 Data.CurrentLanguage，否则 → Application.systemLanguage + ToLanguage()
     }
 }
+// SaveSystem 未就绪时 fallback: Application.systemLanguage
 ```
 
-**方案二：Application.systemLanguage（备选）**
+**⛔ 不要用 Harmony patch `SaveUserOptions.get_CurrentLanguage`**
+
+`SaveUserOptions.CurrentLanguage` 是自动属性 getter（`mov eax,[rcx+4Ch]; ret`）。IL2CPP 下，Harmony Postfix 会被大量无关的 save-data 字段读取误触发，`__result` 返回垃圾值（实测：3, 4, 6, 75, 200, 999, 99999 等）。`Chinese=6` 枚举值极小，垃圾读取中非常容易碰到 → 英文游戏被误判为中文。
+
+这是一个通用的 **IL2CPP 属性 getter Harmony patch 陷阱**：序列化数据类的自动属性 getter 可能被 IL2CPP 内部的字段偏移读取复用，不仅在"读取该属性"时触发。详见 [docs/game-classes.md](game-classes.md) § 游戏语言系统。
+
+**备选 fallback：Application.systemLanguage**
 ```csharp
 var lang = Application.systemLanguage;
 bool isChinese = lang == SystemLanguage.Chinese
@@ -121,7 +135,7 @@ bool isChinese = lang == SystemLanguage.Chinese
     || lang == SystemLanguage.ChineseTraditional;
 ```
 
-备选方案检测的是系统语言而非游戏语言，但大多数情况下二者一致。
+备选方案检测的是系统语言而非游戏语言，但大多数情况下二者一致。适合 SaveSystem 尚未初始化时的早期 fallback。
 
 ---
 

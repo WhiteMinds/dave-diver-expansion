@@ -53,7 +53,7 @@ bash scripts/update-lib.sh
     │   └── QuickSceneSwitch.cs    # 快速场景切换 (F2)
     └── Helpers/
         ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期补丁
-        ├── I18n.cs                # 国际化 + 语言缓存补丁
+        ├── I18n.cs                # 国际化 + SaveSystem API 语言检测
         └── Il2CppHelper.cs        # IL2CPP 反射工具
 ```
 
@@ -89,6 +89,7 @@ bash scripts/update-lib.sh
 - **`Singleton<T>.Instance` 会自动创建实例** — 安全检测用 `Singleton<T>._instance`
 - **Sirenix 依赖问题**：部分类型（如 `SABaseFishSystem`）不能直接 `GetComponent<T>()`，需通过 `IL2CPP.GetIl2CppClass()` + `Marshal.ReadIntPtr` 低级 API 访问（详见 [docs/game-classes.md](docs/game-classes.md) § 鱼攻击性检测）
 - **⛔ 不要 Harmony patch 继承链中的 virtual 方法**（如 `OnDie`）——IL2CPP trampoline 会在基类/兄弟类调用时崩溃，null guard 无效。用 `OnEnable`/`Awake` 注册 + `Purge()` 清理代替（详见 [docs/game-internals.md](docs/game-internals.md) § Harmony + IL2CPP Virtual 方法陷阱）
+- **⛔ 不要 Harmony patch 序列化数据类的自动属性 getter**（如 `SaveUserOptions.get_CurrentLanguage`）——IL2CPP 会复用 getter 进行无关字段偏移读取，Postfix 收到大量垃圾值。获取游戏语言用 `Singleton<SaveSystem>._instance.UserOptionManager.CurrentLanguage`（详见 [docs/game-classes.md](docs/game-classes.md) § 游戏语言系统）
 
 ## 配置系统
 

@@ -251,12 +251,44 @@ Ore_Opal=0, Ore_Lead=1, Ore_Copper=2, Ore_Iron=3, Ore_Diamond=4, Ore_Amethyst=5,
 
 ## 游戏语言系统
 
-- `DR.Save.SaveUserOptions.CurrentLanguage` 返回 `DR.Save.Languages` 枚举
-- `SaveUserOptions` 是序列化数据类（非 MonoBehaviour、非单例），需要通过 Harmony 补丁捕获实例或值
-- `SaveSystemUserOptionManager` 管理 SaveUserOptions 实例，但该类在 interop DLL 中无法被 ilspycmd 定位
-- 游戏广泛使用 `SystemLanguage`（Unity 内置枚举）处理字体、日期等
-- **⚠️ `get_CurrentLanguage` Harmony Postfix 会产生大量垃圾值**：IL2CPP 中该 getter 会被无关的 save-data 字段读取触发，返回 999、99999、17000 等无意义整数值。**不能**直接缓存最后一次返回值
-- Mod 获取游戏语言的推荐方式：Harmony 补丁 `SaveUserOptions.get_CurrentLanguage` 的 Postfix 中，仅当返回 `Chinese(6)` 或 `ChineseTraditional(41)` 时设置 `SeenChinese=true` 标记（可靠正信号），忽略所有其他值
+### 类型层次
+
+| 类名 | 作用 | 关键成员 |
+|------|------|----------|
+| `DR.Save.SaveSystem` : `Singleton<SaveSystem>` | 存档系统入口（单例） | `UserOptionManager`(SaveSystemUserOptionManager), `PlayerDataManager`, `GameDataManager` |
+| `DR.Save.SaveSystemUserOptionManager` : `SaveLoadManagerBase<SaveUserOptions>` | 用户设置管理器 | `CurrentLanguage`(Languages get, CallerCount=19), `CurrentSystemLanguage`(SystemLanguage get), `SetLanguage(Languages)` |
+| `DR.Save.SaveUserOptions` : `SaveDataBase` | 用户设置数据类（序列化） | `CurrentLanguage`(Languages get/set) — ⛔ **不要直接读取，见下方陷阱** |
+| `DR.Save.Languages` | 游戏语言枚举 | `Unknown=0, Chinese=6, English=10, Japanese=22, Korean=23, ChineseTraditional=41` |
+
+### Mod 获取游戏语言的正确方式
+
+直接调用 `SaveSystem` 单例 API（与游戏自身 159 处调用方相同的路径）：
+
+```csharp
+var saveSystem = Singleton<DR.Save.SaveSystem>._instance;
+if (saveSystem != null)
+{
+    var optMgr = saveSystem.UserOptionManager;
+    if (optMgr != null)
+    {
+        var lang = optMgr.CurrentLanguage;  // 正确！带 fallback 逻辑
+        bool isChinese = lang == DR.Save.Languages.Chinese
+            || lang == DR.Save.Languages.ChineseTraditional;
+    }
+}
+```
+
+### SaveSystemUserOptionManager.get_CurrentLanguage 内部逻辑（IsilDump 逆向）
+
+1. 获取内部 `SaveUserOptions` Data 实例
+2. 如果 Data 不为 null → 读取 `Data.CurrentLanguage`（backing field 偏移 0x4C）
+3. **如果 Data 为 null** → fallback 到 `Application.systemLanguage` → `LanguageExtension.ToLanguage()`
+
+### ⛔ 不要 Harmony patch `SaveUserOptions.get_CurrentLanguage`
+
+`SaveUserOptions.CurrentLanguage` 是自动属性（`mov eax,[rcx+4Ch]; ret`），IL2CPP 下该 getter 会被大量**无关的 save-data 字段读取**误触发，产生垃圾值（实测出现：3, 4, 6, 75, 200, 999, 99999 等）。`Chinese=6` 这个枚举值太小，垃圾读取极易碰到，导致语言误判。
+
+实测 Harmony Postfix 在前 50 次调用中出现：`raw=10(English), 3, 3, 3, ..., 6(Chinese!误触发), 8, 75, 29, 95, ...`——第 15 次调用的垃圾值 6 恰好等于 `Chinese` 枚举值。
 
 ## 游戏场景切换系统
 
