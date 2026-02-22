@@ -73,7 +73,7 @@ bash scripts/update-lib.sh
 - `Directory.Build.props` — 入 Git，定义框架、引用、构建后自动部署
 - `GamePath.user.props` — **不入 Git**，定义 `$(GamePath)` 变量
 - 引用 DLL 解析：有 GamePath → 游戏目录；无 GamePath（CI）→ `lib/` 目录
-- 新增 interop 引用：在 `Directory.Build.props` 的 `<ItemGroup>` 中添加 `<Reference>`
+- 新增 interop 引用：在 `Directory.Build.props` 的 `<ItemGroup>` 中添加 `<Reference>`，然后运行 `bash scripts/update-lib.sh && git add lib/` 同步到 CI 引用目录
 
 ## IL2CPP 注意事项
 

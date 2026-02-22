@@ -1,6 +1,7 @@
 #!/bin/bash
 # Usage: bash scripts/update-lib.sh
 # Copies reference DLLs from game dir to lib/ for CI builds.
+# DLL list is auto-extracted from Directory.Build.props — no manual sync needed.
 # Reads GamePath from GamePath.user.props.
 
 set -euo pipefail
@@ -8,6 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PROPS_FILE="$PROJECT_DIR/GamePath.user.props"
+BUILD_PROPS="$PROJECT_DIR/Directory.Build.props"
 
 if [ ! -f "$PROPS_FILE" ]; then
   echo "Error: GamePath.user.props not found at $PROPS_FILE"
@@ -30,36 +32,17 @@ LIB="$PROJECT_DIR/lib"
 
 mkdir -p "$LIB/bepinex" "$LIB/interop"
 
-# BepInEx core DLLs
-BEPINEX_DLLS=(
-  "0Harmony.dll"
-  "BepInEx.Core.dll"
-  "BepInEx.Unity.IL2CPP.dll"
-  "Il2CppInterop.Runtime.dll"
-)
-
-# Interop DLLs
-INTEROP_DLLS=(
-  "Assembly-CSharp.dll"
-  "Il2Cppmscorlib.dll"
-  "UnityEngine.dll"
-  "UnityEngine.CoreModule.dll"
-  "UnityEngine.PhysicsModule.dll"
-  "UnityEngine.Physics2DModule.dll"
-  "UnityEngine.UI.dll"
-  "UnityEngine.UIModule.dll"
-  "UnityEngine.InputLegacyModule.dll"
-  "UnityEngine.TextRenderingModule.dll"
-)
+# Auto-extract DLL lists from Directory.Build.props HintPath entries
+echo "Reading DLL references from Directory.Build.props..."
 
 echo "Copying BepInEx core DLLs..."
-for dll in "${BEPINEX_DLLS[@]}"; do
+grep -o '$(BepInExPath)\\[^<]*\.dll' "$BUILD_PROPS" | sed 's/.*\\//' | while read -r dll; do
   cp "$BEPINEX_CORE/$dll" "$LIB/bepinex/"
   echo "  $dll"
 done
 
 echo "Copying interop DLLs..."
-for dll in "${INTEROP_DLLS[@]}"; do
+grep -o '$(InteropPath)\\[^<]*\.dll' "$BUILD_PROPS" | sed 's/.*\\//' | while read -r dll; do
   cp "$INTEROP/$dll" "$LIB/interop/"
   echo "  $dll"
 done

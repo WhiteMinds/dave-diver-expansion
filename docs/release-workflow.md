@@ -13,7 +13,7 @@
 ### Release zip 结构
 
 ```
-DaveDiverExpansion-v0.3.0.zip
+DaveDiverExpansion-vX.Y.Z.zip
 └── BepInEx/plugins/DaveDiverExpansion/
     └── DaveDiverExpansion.dll
 ```
@@ -21,9 +21,10 @@ DaveDiverExpansion-v0.3.0.zip
 
 ### Git LFS
 
-14 个引用 DLL（~56MB）通过 Git LFS 存储在 `lib/` 目录下：
+引用 DLL 通过 Git LFS 存储在 `lib/` 目录下：
 - `lib/bepinex/` — 4 个 BepInEx 核心 DLL（0Harmony, BepInEx.Core, BepInEx.Unity.IL2CPP, Il2CppInterop.Runtime）
-- `lib/interop/` — 10 个游戏 interop DLL（Assembly-CSharp, UnityEngine 系列等）
+- `lib/interop/` — 游戏 interop DLL（Assembly-CSharp, UnityEngine 系列, Unity.InputSystem 等）
+- DLL 列表由 `Directory.Build.props` 中的 `<Reference>` 决定，`update-lib.sh` 自动提取
 - `.gitattributes` 配置 `lib/**/*.dll filter=lfs diff=lfs merge=lfs -text`
 - `.gitignore` 中 `*.dll` 后添加 `!lib/**/*.dll` 例外
 
@@ -33,27 +34,43 @@ DaveDiverExpansion-v0.3.0.zip
 
 ```bash
 # 1. 更新 Plugin.cs 中的 PLUGIN_VERSION
-# 2. 更新 docs/nexusmods-description.bbcode 中的 Changelog
-# 3. 更新 README.md Features（如有功能变化）
-# 4. 提交更改
+# 2. 更新 docs/nexusmods-description.bbcode（Features + Settings + Changelog）
+# 3. 更新 README.md（Features + Settings 表格）
+# 4. 更新 .tmp/pw-nexusmods-release.js 中的 VERSION / PREV_FILE_ID / FILE_DESCRIPTION
+# 5. 验证 lib/ 与 Directory.Build.props 同步（见下方 ⚠️）
+# 6. 提交更改
 git commit -m "Bump version to X.Y.Z"
-# 5. 打标签并推送
+# 7. 打标签并推送
 git tag vX.Y.Z
 git push origin main --tags
-# 6. 用 gh 检查 CI 状态
+# 8. 用 gh 等待 CI 完成
 gh run list --limit 3
 gh run watch <run-id> --exit-status
-# 7. CI 自动构建并创建 GitHub Release（含 DaveDiverExpansion-vX.Y.Z.zip）
-# 8. NexusMods 上传（见下方）
+# 9. CI 自动构建并创建 GitHub Release（含 DaveDiverExpansion-vX.Y.Z.zip）
+# 10. 下载 zip 并用 Playwright 上传 NexusMods（见下方）
+gh release download vX.Y.Z --dir .tmp --pattern "*.zip"
 ```
+
+**⚠️ CI 构建前必须检查 `lib/` 同步**：
+
+CI 环境没有 `GamePath`，构建依赖 `lib/` 中的 DLL。如果开发期间在 `Directory.Build.props` 中新增了引用 DLL，**必须**在发布前同步：
+
+```bash
+bash scripts/update-lib.sh   # 自动从 Directory.Build.props 提取 DLL 列表并复制
+git add lib/                  # 新 DLL 通过 Git LFS 存储
+```
+
+`update-lib.sh` 会自动解析 `Directory.Build.props` 中的 `<HintPath>` 来确定需要哪些 DLL，无需手动维护列表。
 
 **发布时需更新的文件检查清单**：
 
 | 文件 | 内容 | 必须 |
 |------|------|------|
-| `src/.../Plugin.cs:37` | `PLUGIN_VERSION = "X.Y.Z"` | ✅ |
-| `docs/nexusmods-description.bbcode` | Changelog 区域 | ✅ |
-| `README.md` | Features 列表（如有功能变化） | 可选 |
+| `src/.../Plugin.cs:38` | `PLUGIN_VERSION = "X.Y.Z"` | ✅ |
+| `docs/nexusmods-description.bbcode` | Features + Settings + Changelog | ✅ |
+| `README.md` | Features + Settings 表格 | ✅ |
+| `.tmp/pw-nexusmods-release.js` | `VERSION` / `PREV_FILE_ID` / `FILE_DESCRIPTION` | ✅ |
+| `lib/` | 运行 `update-lib.sh` 确保与 `Directory.Build.props` 同步 | ✅ |
 
 ## NexusMods 上传
 
@@ -130,5 +147,6 @@ cd "$SKILL_DIR" && node run.js "F:/Projects/dave-diver-expansion/.tmp/pw-nexusmo
 | 添加视频按钮 | `button#upload_video` | "Add this video" |
 
 **已知文件 ID**：
-- v0.1.0: `file_id=152` | v0.2.0: `file_id=153` | v0.3.0: `file_id=154`
+- v0.1.0: `152` | v0.2.0: `153` | v0.3.0: `154` | v1.0.0: `155`
 - 新上传的文件 ID = 上一个 + 1（规律未确认，以实际页面为准）
+- 确认方式：用 Playwright 访问文件管理页，查询 `[id^="file-entry-"]` 元素（参见 `.tmp/pw-check-fileid.js`）
