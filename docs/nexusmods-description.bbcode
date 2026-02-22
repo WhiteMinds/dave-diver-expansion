@@ -16,9 +16,14 @@ Automatically collects nearby fish, items, and treasure chests while diving.
 [b]Dive Map[/b]
 Minimap HUD and full-level map overlay while diving.
 [list]
-[*]Minimap in the top-right corner, follows the player with configurable zoom
-[*]Press [b]M[/b] to toggle a full-level enlarged map in the center of the screen
-[*]Color-coded markers: escape pods (green), fish (blue), aggressive fish (red), items (yellow), chests (orange), O2 chests (cyan)
+[*]Minimap in configurable screen corner, follows the player with adjustable zoom
+[*]Press [b]M[/b] to toggle a full-level enlarged map — scroll wheel to zoom toward cursor, mouse drag to pan
+[*]Distinct marker shapes: aggressive fish (red triangle), ores (pink diamond), chests (square), escape pods (diamond), normal fish/catchable fish (circle)
+[*]Ore and mining node markers on the map
+[*]Distant fish markers — shows fish that are streamed out by the game, frozen at last known position
+[*]Big map legend panel and operation instructions
+[*]Independent toggles for normal / aggressive / catchable fish markers
+[*]ESC closes big map; map hides during cutscenes
 [/list]
 
 [b]Quick Scene Switch[/b]
@@ -34,6 +39,9 @@ Press [b]F1[/b] to open a settings UI overlay.
 [*]Auto-discovers all config entries from all features
 [*]Toggle, slider, dropdown, and text input controls
 [*]In-game key rebinding — click any hotkey button and press a new key
+[*]Hover any setting row to see its full description
+[*]Scroll wheel support for settings list
+[*]"Reset All Settings" button to restore defaults
 [*]Changes take effect immediately
 [/list]
 
@@ -80,16 +88,50 @@ You can also edit the config file directly:
 [list]
 [*][font=Courier New]Enabled[/font] (default: true) — Enable the dive map HUD
 [*][font=Courier New]ToggleKey[/font] (default: M) — Key to toggle the enlarged map
+[*][font=Courier New]MiniMapEnabled[/font] (default: true) — Show the minimap overlay during diving
+[*][font=Courier New]MiniMapPosition[/font] (default: TopRight) — Screen corner for the minimap
+[*][font=Courier New]MiniMapOffsetX[/font] (default: 16) — Minimap horizontal offset from screen edge (0–500)
+[*][font=Courier New]MiniMapOffsetY[/font] (default: 16) — Minimap vertical offset from screen edge (0–500)
+[*][font=Courier New]MapSize[/font] (default: 0.3) — Minimap size (fraction of screen height)
+[*][font=Courier New]MiniMapZoom[/font] (default: 3.0) — Minimap zoom level
+[*][font=Courier New]MapOpacity[/font] (default: 0.8) — Map opacity
 [*][font=Courier New]ShowEscapePods[/font] (default: true) — Show escape pod markers
-[*][font=Courier New]ShowFish[/font] (default: false) — Show fish markers
+[*][font=Courier New]ShowOres[/font] (default: true) — Show ore/mineral markers
+[*][font=Courier New]ShowFish[/font] (default: false) — Show normal fish markers
+[*][font=Courier New]ShowAggressiveFish[/font] (default: true) — Show aggressive fish markers
+[*][font=Courier New]ShowCatchableFish[/font] (default: true) — Show catchable fish markers
+[*][font=Courier New]ShowDistantFish[/font] (default: true) — Show markers for distant streamed-out fish
 [*][font=Courier New]ShowItems[/font] (default: false) — Show item markers
 [*][font=Courier New]ShowChests[/font] (default: false) — Show chest markers
-[*][font=Courier New]MapSize[/font] (default: 0.3) — Minimap size (fraction of screen height)
-[*][font=Courier New]MapOpacity[/font] (default: 0.8) — Map opacity
-[*][font=Courier New]MiniMapZoom[/font] (default: 3.0) — Minimap zoom level
+[*][font=Courier New]MarkerScale[/font] (default: 1.0) — Scale multiplier for all map markers (0.5–3x)
 [/list]
 
 [size=3][b]Changelog[/b][/size]
+
+[b]v1.0.0[/b]
+[list]
+[*]DiveMap: Ore and mining node markers (pink diamonds) with dead/cleared filtering
+[*]DiveMap: Minimap position config — choose corner (TopRight/TopLeft/BottomRight/BottomLeft) and pixel offset
+[*]DiveMap: Big map now renders at 1024px for sharper detail
+[*]DiveMap: ESC closes big map; map hides during cutscenes and scripted actions
+[*]DiveMap: Distinct marker shapes — aggressive fish (red triangle), ores (pink diamond), chests (square), escape pods (diamond), player/fish (circle)
+[*]DiveMap: Big map legend panel showing all marker types with color and shape
+[*]DiveMap: Big map zoom and pan — scroll wheel zooms toward cursor, mouse drag pans
+[*]DiveMap: Combat input blocking — disables melee attack when mouse is over the big map
+[*]DiveMap: Big map operation instructions panel (scroll to zoom, drag to pan, close keys)
+[*]DiveMap: Independent fish type toggles — ShowFish (normal), ShowAggressiveFish, ShowCatchableFish
+[*]DiveMap: Minimap markers scale with zoom level for consistent visibility
+[*]DiveMap: Show distant (streamed-out) fish markers frozen at last known position (ShowDistantFish config)
+[*]DiveMap: MarkerScale config (0.5x–3x) for all map markers
+[*]DiveMap: Fixed minimap bounds in small scenes (e.g. boss fights) — uses fixed size instead of percentage
+[*]DiveMap: Fixed item markers not clearing after pickup (e.g. ingredient pots)
+[*]DiveMap: Fixed fish aggression misclassification (e.g. squid marked blue, seahorse marked red)
+[*]ConfigUI: Hover description bar — hover any setting row to see its full description
+[*]ConfigUI: Scroll wheel support for settings list
+[*]ConfigUI: Live language switching — changing language immediately refreshes all UI text
+[*]ConfigUI: "Reset All Settings" button with 3-second confirmation timeout
+[*]ConfigUI: Full i18n coverage for all setting names and descriptions (Chinese/English)
+[/list]
 
 [b]v0.3.0[/b]
 [list]

@@ -13,11 +13,15 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
   - Smart filtering: skips weapons to prevent swap loops
   - Pauses during cutscenes/scenarios with cooldown to prevent quest-breaking pickups
 - **Dive Map** — Minimap HUD and full-level map overlay while diving
-  - Minimap in the top-right corner, follows the player with configurable zoom
-  - Press M to toggle a full-level enlarged map in the center of the screen
-  - Color-coded markers: escape pods (green), normal fish (blue), aggressive fish (red triangle), catchable fish (green circle), items (yellow), chests (orange), O2 chests (cyan), ores (pink), ingredient pots (purple-red)
+  - Minimap in configurable screen corner, follows the player with adjustable zoom
+  - Press M to toggle a full-level enlarged map — scroll wheel to zoom toward cursor, mouse drag to pan
+  - Distinct marker shapes: aggressive fish (red triangle), ores (pink diamond), chests (square), escape pods (diamond), normal fish/catchable fish (circle)
+  - Ore and mining node markers on the map
+  - Distant fish markers — shows fish streamed out by the game, frozen at last known position
+  - Big map legend panel and operation instructions
   - Independent toggles for normal / aggressive / catchable fish markers
   - Minimap markers scale with zoom level for consistent visibility
+  - ESC closes big map; map hides during cutscenes
   - Auto-disables in Merfolk Village (which has its own map)
 - **Quick Scene Switch** — Press F2 to open the scene-switch menu from anywhere (no need to walk to the exit)
   - Works in any non-dive scene (Lobby, Sushi Bar, Farm, etc.)
@@ -26,6 +30,8 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
   - Auto-discovers all config entries from all features
   - Toggle, slider, dropdown, and text input controls based on value type
   - In-game key rebinding — click any hotkey button and press a new key
+  - Hover any setting row to see its full description
+  - Scroll wheel support and "Reset All Settings" button
   - Changes take effect immediately
 
 ## Installation (Players)
@@ -76,15 +82,22 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 |---------|---------|-------------|
 | `Enabled` | `true` | Enable the dive map HUD |
 | `ToggleKey` | `M` | Key to toggle the enlarged map view |
+| `MiniMapEnabled` | `true` | Show the minimap overlay during diving |
+| `MiniMapPosition` | `TopRight` | Screen corner for the minimap |
+| `MiniMapOffsetX` | `16` | Minimap horizontal offset from screen edge (0–500) |
+| `MiniMapOffsetY` | `16` | Minimap vertical offset from screen edge (0–500) |
+| `MapSize` | `0.3` | Minimap size (fraction of screen height) |
+| `MiniMapZoom` | `3.0` | Minimap zoom level |
+| `MapOpacity` | `0.8` | Map opacity |
 | `ShowEscapePods` | `true` | Show escape pod/mirror markers |
+| `ShowOres` | `true` | Show ore/mineral markers |
 | `ShowFish` | `false` | Show normal fish markers (non-aggressive, non-catchable) |
 | `ShowAggressiveFish` | `true` | Show aggressive fish markers (e.g. sharks, piranhas) |
 | `ShowCatchableFish` | `true` | Show catchable fish markers (e.g. shrimp, seahorse) |
+| `ShowDistantFish` | `true` | Show markers for distant streamed-out fish |
 | `ShowItems` | `false` | Show item markers |
 | `ShowChests` | `false` | Show chest markers |
-| `MapSize` | `0.3` | Minimap size (fraction of screen height) |
-| `MapOpacity` | `0.8` | Map opacity |
-| `MiniMapZoom` | `3.0` | Minimap zoom level |
+| `MarkerScale` | `1.0` | Scale multiplier for all map markers (0.5–3x) |
 
 ---
 
@@ -179,7 +192,7 @@ ilspycmd -t PlayerCharacter "<GamePath>/BepInEx/interop/Assembly-CSharp.dll" | g
 ```bash
 # 1. Update PLUGIN_VERSION in Plugin.cs
 # 2. Commit and tag
-git tag v0.3.0
+git tag v1.0.0
 git push origin main --tags
 # 3. GitHub Actions builds and creates a Release with the zip
 #    and auto-uploads to NexusMods (if NEXUSMODS_FILE_ID is set)
