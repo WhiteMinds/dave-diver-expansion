@@ -138,7 +138,7 @@ public class DiveMapBehaviour : MonoBehaviour
     /// </summary>
     private static Sprite GetShapeSprite(MarkerShape shape)
     {
-        if (_shapeSprites.TryGetValue(shape, out var cached)) return cached;
+        if (_shapeSprites.TryGetValue(shape, out var cached) && cached != null) return cached;
 
         const int sz = 20;
         const float center = (sz - 1) / 2f; // 9.5
