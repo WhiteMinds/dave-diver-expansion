@@ -24,6 +24,19 @@ Dave the Diver (v1.0.5.1784) 的 IL2CPP interop 代码结构探索笔记。
 
 **原因**：IL2CPP interop DLL 的类型系统与标准 .NET 程序集不同，某些类型在 interop 生成过程中可能不完整。
 
+### Cpp2IL IsilDump（查看实际 native 实现）
+
+当 interop 反编译只能看到 `il2cpp_runtime_invoke` 调用、无法了解方法的实际逻辑时，可使用 Cpp2IL 生成的 ISIL dump 查看伪汇编。
+
+**路径**: `.tmp/cpp2il_out/IsilDump/Assembly-CSharp/ClassName.txt`
+
+**用途示例**:
+- 确认方法是否是空壳（如 `CatchableByItem.isPlayerCatchableThis` → `mov al,1; ret`，直接返回 true）
+- 确认方法实际检查了哪些字段（如 `FishInteractionBody.CheckAvailableInteraction` 不检查 `isInteractable`，只检查 LootBox 满载和 drone 可用性）
+- 理解 `ConditionFishInteraction.Update` 如何调用 `ContentsUnlockManager.IsUnlock` 控制交互启用
+
+**注意**：IsilDump 是伪汇编/ISIL 中间表示，需要结合 interop 反编译的字段偏移量来理解。ISIL 中的 `Call` 指令会显示实际调用的方法名（如 `LootBox.CheckOverloadedState`、`ContentsUnlockManager.IsUnlock`），比纯汇编更容易阅读。
+
 ---
 
 ## 2. 游戏语言系统
@@ -176,9 +189,17 @@ ilspycmd -t ClassName dll | grep "Public.*Static"            # 列出所有静�
 | 工具 | 用途 | 何时使用 |
 |------|------|----------|
 | **UnityExplorer** (IL2CPP 版) | 运行时场景浏览器，可实时查看 Hierarchy、Inspector、调用方法 | 探索 UI 结构、定位 Canvas/组件、调试运行时状态 |
-| **Cpp2IL** | 将 IL2CPP 二进制还原为伪代码，比 interop DLL 能看到更多实现逻辑 | ilspycmd 只能看签名时，需要理解方法的实际实现。CLI: `Cpp2IL-Win.exe --game-path="<GamePath>"` ([GitHub](https://github.com/SamboyCoding/Cpp2IL/releases)) |
+| **Cpp2IL** | 将 IL2CPP 二进制还原为 ISIL 伪代码（汇编级），能看到方法的实际实现逻辑 | ilspycmd 反编译失败的类型、需要理解方法实际逻辑时。CLI: `Cpp2IL-Win.exe --game-path="<GamePath>" --output-root=.tmp/cpp2il_out --use-processor=isil` ([GitHub](https://github.com/SamboyCoding/Cpp2IL/releases)) |
 | **Cheat Engine** | 动态内存搜索，"什么改写了这个地址" 可反向定位函数 | 定位数值的存储位置和修改函数 |
 | **Il2CppDumper** | 独立的元数据提取工具，解析 GameAssembly.dll + global-metadata.dat | BepInEx 已自动生成 interop DLL，通常不需要；但可生成 IDA/Ghidra 脚本做深度分析。CLI: `Il2CppDumper.exe <GameAssembly.dll> <global-metadata.dat> <output/>` ([GitHub](https://github.com/Perfare/Il2CppDumper)) |
+
+### Cpp2IL 产物详情
+
+- 产物路径：`.tmp/cpp2il_out/IsilDump/`，每个程序集一个子目录，每个类型一个 `.txt` 文件
+- Assembly-CSharp 下 6986 个文件，总计 ~450 万行
+- 文件内容：方法签名 + 汇编反汇编 + ISIL 伪代码（低级但有实现）
+- **与 ilspycmd 互补**：ilspycmd 输出高级 C# 签名（易读但部分类型失败），Cpp2IL 输出 ISIL 伪代码（汇编级但覆盖更全）
+- 搜索示例：`grep -r "MethodName" .tmp/cpp2il_out/IsilDump/Assembly-CSharp/`
 
 ---
 

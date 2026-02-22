@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using BepInEx.Configuration;
 using DaveDiverExpansion.Helpers;
 using HarmonyLib;
+using Il2CppInterop.Runtime;
 using UnityEngine;
 
 namespace DaveDiverExpansion.Features;
@@ -91,6 +92,11 @@ public static class AutoPickup
                 if (Vector3.Distance(playerPos, fish.transform.position) > radius) continue;
                 if (fish.InteractionType != FishInteractionBody.FishInteractionType.Pickup) continue;
 
+                // Skip fish whose interaction is disabled (e.g. catchable creatures like
+                // sea angels/seahorses that require unlocking bug net via ConditionFishInteraction)
+                if (!fish.isInteractable)
+                    continue;
+
                 if (fish.CheckAvailableInteraction(player))
                 {
                     fish.SuccessInteract(player);
@@ -117,6 +123,15 @@ public static class AutoPickup
                 var goName = item.gameObject.name;
                 if (goName.StartsWith("PickupInstance") || goName.Contains("HarpoonHead"))
                     continue;
+
+                // Skip sea urchins when player lacks sufficient grab level (no gloves)
+                var seaUrchin = item.TryCast<PickupInstanceItem_SeaUrchin>();
+                if (seaUrchin != null)
+                {
+                    var grabHandler = player.grabHandler;
+                    if (grabHandler == null || grabHandler.grabLevel < seaUrchin._grabLevel)
+                        continue;
+                }
 
                 if (item.CheckAvailableInteraction(player))
                 {

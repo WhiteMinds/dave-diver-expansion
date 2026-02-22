@@ -27,6 +27,12 @@ ilspycmd -t ClassName "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 # 整体反编译到 decompiled/（推荐，一次性，6700+ 文件，方便 Grep 搜索）
 ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 
+# 查看方法的实际 native 实现（当 interop 只有 il2cpp_runtime_invoke 时）
+# IsilDump 位于 .tmp/cpp2il_out/IsilDump/Assembly-CSharp/ClassName.txt
+
+# Cpp2IL 反编译（ISIL 伪代码，能看到方法实现逻辑，产物在 .tmp/cpp2il_out/IsilDump/）
+Cpp2IL-Win.exe --game-path="<GamePath>" --output-root=.tmp/cpp2il_out --use-processor=isil
+
 # 游戏更新后，同步引用 DLL 到 lib/（供 CI 构建使用）
 bash scripts/update-lib.sh
 ```
@@ -61,8 +67,8 @@ bash scripts/update-lib.sh
 
 | 文档 | 内容 | 何时查阅 |
 |------|------|----------|
-| [docs/game-classes.md](docs/game-classes.md) | 游戏类参考表、物品/鱼/宝箱分类、玩家状态锁定、语言系统、场景切换系统 | 开发新 Harmony 补丁、操作游戏实体时 |
-| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统 | 探索未知游戏类、排查反编译问题时 |
+| [docs/game-classes.md](docs/game-classes.md) | 游戏类参考表、物品/鱼/宝箱分类、鱼交互条件系统、捕虫网/手套装备、玩家状态锁定、语言系统、场景切换系统 | 开发新 Harmony 补丁、操作游戏实体时 |
+| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、IsilDump 逆向、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统 | 探索未知游戏类、排查反编译问题时 |
 | [docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md) | uGUI + IL2CPP 踩坑记录（布局、Dropdown 模板、ClassInjector） | 修改/新增 ConfigUI 面板 UI 时 |
 | [docs/divemap-perf.md](docs/divemap-perf.md) | DiveMap 性能优化数据（CPU/GPU profiling） | 优化 DiveMap 性能时 |
 | [docs/release-workflow.md](docs/release-workflow.md) | CI/CD、发布流程、NexusMods 上传、Playwright 自动化、DOM 选择器 | 发布新版本时 |
@@ -113,6 +119,7 @@ bash scripts/update-lib.sh
 
 1. 确保 `decompiled/` 目录存在（整体反编译）
 2. 用 Grep 在 `decompiled/` 中搜索关键类名/方法名
-3. 查阅 [docs/game-classes.md](docs/game-classes.md) 确认类型和方法签名
-4. 编写 `[HarmonyPatch]` + 在 `Plugin.cs` 的 `Load()` 中初始化
-5. `dotnet build` → 启动游戏测试 → 查看 `LogOutput.log`
+3. 若 ilspycmd 反编译失败，可查 `.tmp/cpp2il_out/IsilDump/` 中的 ISIL 伪代码（汇编级但有实现逻辑）
+4. 查阅 [docs/game-classes.md](docs/game-classes.md) 确认类型和方法签名
+5. 编写 `[HarmonyPatch]` + 在 `Plugin.cs` 的 `Load()` 中初始化
+6. `dotnet build` → 启动游戏测试 → 查看 `LogOutput.log`

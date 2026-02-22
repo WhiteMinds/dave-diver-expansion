@@ -16,12 +16,62 @@
 
 | 类名 | 作用 | 关键方法 |
 |------|------|----------|
-| `FishInteractionBody` | 可交互的鱼 | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `InteractionType` |
+| `FishInteractionBody` | 可交互的鱼 | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `InteractionType`, `isInteractable`(bool), `IsEnableInteraction`(bool get/set) |
 | `PickupInstanceItem` | 掉落物品基类（所有可拾取物品） | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `isNeedSwapSetID`, `usePreset`, `GetItemID()` |
+| `PickupInstanceItem_SeaUrchin` | 海胆（PickupInstanceItem 子类） | `_grabLevel`(int) — 所需 grab level，低于该等级拾取会扣血 |
 | `InstanceItemChest` | 宝箱 | `SuccessInteract(BaseCharacter)`, `IsOpen` |
 | `CrabTrapZone` | 捕蟹笼区域 | `CheckAvailableInteraction(BaseCharacter)`, `SetUpCrabTrap(int)` |
 | `OxygenArea` | 氧气补充区域 | `minHP`, `chargeTime`, `isCharging`（注意：不在宝箱上） |
 | `FishInteractionBody` 内部枚举 | 鱼交互类型 | `FishInteractionType`: None=0, Carving=1, Pickup=2, Calldrone=3 |
+| `ConditionFishInteraction` | 条件交互控制器（挂在需要解锁才能拾取的鱼上） | `conditionType`(ConditionType), `IsAbleToInteraction`(bool get), `itemUID`(int), `unlockedContent`(ContentsList) |
+| `GrabObject` | 可抓取对象 | `_grabLevel`(int), `grabLevel`(int get), `_grabType`(GrabType enum), `_type`(Type: PickUp/NonPickUp) |
+| `GrabHandler` | 玩家抓取处理器 | `grabLevel`(int get/set), `_grabLevel`(int) — 通过 `PlayerCharacter.grabHandler` 访问 |
+| `CatchableByItem` | 可用道具捕捉的生物 | `isPlayerCatchableThis`(bool get) ⚠️**空壳，永远返回true** |
+
+## 鱼交互条件系统
+
+### ConditionFishInteraction（条件交互控制）
+
+挂在需要特定条件才能拾取的鱼/生物身上（如海天使、海马等需要捕虫网的生物）。
+
+**ConditionType 枚举**: `None=0, HasItem=1, UnlockedContents=2`
+
+**工作机制**（通过 IsilDump 逆向确认）：
+- `Awake()`: 将关联的 `FishInteractionBody.isInteractable` 设为 false，`IsEnableInteraction` 设为 false，`InteractionType` 设为 2（Pickup）
+- `Update()`: 每帧检查 `conditionType == UnlockedContents`，若 `ContentsUnlockManager.IsUnlock(unlockedContent)` 返回 true，则启用 `FishInteractionBody.IsEnableInteraction` 并设 `InteractionType = Pickup`
+- `IsAbleToInteraction` getter: 同上逻辑，但只读
+
+### FishInteractionBody.CheckAvailableInteraction 实际逻辑
+
+⚠️ **重要**：`CheckAvailableInteraction` **不检查** `isInteractable` 或 `IsEnableInteraction`！
+
+通过 IsilDump 逆向确认的实际逻辑：
+1. 读取 `InteractionType`
+2. `Carving(1)` 或 `Pickup(2)` → 检查 `LootBox.CheckOverloadedState`（背包是否满载），取反返回
+3. `Calldrone(3)` → 检查 `PlayerCharacter.IsDroneAvailable`
+4. 其他 → 返回 `true`
+
+**影响**：Mod 的 AutoPickup 调用 `CheckAvailableInteraction` 会绕过条件限制（捕虫网等），**必须手动检查** `fish.isInteractable` 来阻止拾取未解锁的条件鱼。
+
+### PickupInstanceItem_SeaUrchin（海胆 grab level 检查）
+
+`PickupInstanceItem_SeaUrchin` 是 `PickupInstanceItem` 的真实子类，有独立的 `NativeClassPtr`。
+- 使用 `item.TryCast<PickupInstanceItem_SeaUrchin>()` 可安全检测
+- `_grabLevel` 字段标识拾取所需的手套等级
+- 与 `PlayerCharacter.grabHandler.grabLevel` 比较判断是否安全
+
+### 捕虫网装备系统
+
+| 类 | 字段/属性 | 说明 |
+|---|---|---|
+| `NetGear` : MonoBehaviour | `m_CaptureLevel`, `m_CaptrueSize`(NetCaptrueSize), `m_Strength`, `m_CapturedFishes` | 捕虫网装备组件 |
+| `GearParameter` | `netCaptureLevel`, `netSize`(NetCaptrueSize), `captureCount`, `netStrength` | 玩家装备参数 |
+| `NetCaptrueSize` (enum) | `None=0, Small=1, Medium=2, Big=4, UnCaptureableSize=8, All=7` | 捕虫网可捕获的尺寸 |
+| `ItemType` (enum) | `Ingredient_Catch=11` | 需要捕虫网才能获得的食材类型 |
+
+### CatchableByItem 空壳警告
+
+⚠️ `CatchableByItem.isPlayerCatchableThis` 通过 IsilDump 确认实现为 `mov al,1; ret`（直接返回 true），**不能用于判断玩家是否有能力抓取**。`OnGrabCalled()` 同样是空方法（`ret 0`）。
 
 ## 鱼 AI 类
 
