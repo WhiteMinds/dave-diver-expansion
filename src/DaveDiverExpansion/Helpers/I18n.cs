@@ -48,6 +48,10 @@ public static class I18n
         ["MapOpacity"] = "地图透明度",
         ["MiniMapZoom"] = "小地图缩放",
 
+        // Debug entries
+        ["Debug"] = "调试",
+        ["DebugLog"] = "调试日志",
+
         // QuickSceneSwitch entries
         ["QuickSceneSwitch"] = "快速切换场景",
 
@@ -57,30 +61,52 @@ public static class I18n
 
     public static ConfigEntry<ModLanguage> LanguageSetting;
 
-    /// <summary>Cached from Harmony Postfix on SaveUserOptions.get_CurrentLanguage.</summary>
-    internal static DR.Save.Languages? CachedGameLanguage;
+    /// <summary>
+    /// Tracks whether Chinese was ever seen from the Harmony getter patch.
+    /// The getter fires for many unrelated save-data fields (returning garbage ints like
+    /// 999, 0, 10, etc.), so we only trust it when we see Chinese specifically.
+    /// </summary>
+    internal static bool SeenChinese;
+
+    private static bool _langDebugDone;
 
     /// <summary>
     /// Returns true when the UI should display Chinese text.
-    /// Priority: ConfigEntry override > Harmony-cached game language > OS language.
+    /// Priority: ConfigEntry override > Harmony "ever seen Chinese" > OS language.
     /// </summary>
     public static bool IsChinese()
     {
         if (LanguageSetting?.Value == ModLanguage.Chinese) return true;
         if (LanguageSetting?.Value == ModLanguage.English) return false;
 
-        // Auto mode: prefer game's own language (Harmony-cached)
-        if (CachedGameLanguage.HasValue)
+        // Auto mode: if Harmony has ever seen Chinese from the getter, trust it
+        if (SeenChinese)
         {
-            return CachedGameLanguage.Value == DR.Save.Languages.Chinese
-                || CachedGameLanguage.Value == DR.Save.Languages.ChineseTraditional;
+            LogAutoDetection("game", "SeenChinese=true", true);
+            return true;
         }
 
-        // Fallback: OS language (before game has read its settings)
+        // Fallback: OS language
         var lang = Application.systemLanguage;
-        return lang == SystemLanguage.Chinese
+        bool fallback = lang == SystemLanguage.Chinese
             || lang == SystemLanguage.ChineseSimplified
             || lang == SystemLanguage.ChineseTraditional;
+        LogAutoDetection("OS", $"systemLanguage={lang}", fallback);
+        return fallback;
+    }
+
+    private static void LogAutoDetection(string source, string detail, bool isChinese)
+    {
+        if (_langDebugDone) return;
+        try
+        {
+            if (Features.DiveMap.DebugLog?.Value == true)
+            {
+                Plugin.Log.LogInfo($"[I18n] Auto detect via {source}: {detail} → isChinese={isChinese}");
+                _langDebugDone = true;
+            }
+        }
+        catch { }
     }
 
     /// <summary>
@@ -96,15 +122,23 @@ public static class I18n
 }
 
 /// <summary>
-/// Harmony patch that captures the game's current language setting whenever
-/// it is read. The game's UI/font/save systems call this getter frequently,
-/// so the cached value will be available before the user opens our config panel.
+/// Harmony patch on SaveUserOptions.get_CurrentLanguage.
+/// The IL2CPP getter fires for many unrelated save-data field reads, producing garbage values.
+/// We only set SeenChinese=true when Chinese/ChineseTraditional appears — this is a reliable
+/// positive signal. All other values are ignored because they're indistinguishable from garbage.
 /// </summary>
 [HarmonyPatch(typeof(DR.Save.SaveUserOptions), nameof(DR.Save.SaveUserOptions.CurrentLanguage), MethodType.Getter)]
 static class GameLanguageCachePatch
 {
     static void Postfix(DR.Save.Languages __result)
     {
-        I18n.CachedGameLanguage = __result;
+        if (__result == DR.Save.Languages.Chinese || __result == DR.Save.Languages.ChineseTraditional)
+        {
+            if (!I18n.SeenChinese)
+            {
+                Plugin.Log.LogInfo($"[I18n] Chinese detected from game: {__result}({(int)__result})");
+                I18n.SeenChinese = true;
+            }
+        }
     }
 }

@@ -18,6 +18,8 @@ public static class EntityRegistry
     private const float PurgeInterval = 2f;
     private static float _purgeTimer;
 
+    private static bool IsDebug => Features.DiveMap.DebugLog?.Value == true;
+
     /// <summary>
     /// Remove destroyed objects from registries that lack OnDisable patches.
     /// Call periodically from a per-frame hook (e.g. PlayerCharacter.Update postfix).
@@ -27,8 +29,19 @@ public static class EntityRegistry
         _purgeTimer += Time.deltaTime;
         if (_purgeTimer < PurgeInterval) return;
         _purgeTimer = 0f;
+
+        int fishBefore = AllFish.Count;
+        int chestBefore = AllChests.Count;
         AllFish.RemoveWhere(f => f == null);
         AllChests.RemoveWhere(c => c == null);
+
+        if (IsDebug)
+        {
+            int fishRemoved = fishBefore - AllFish.Count;
+            int chestRemoved = chestBefore - AllChests.Count;
+            if (fishRemoved > 0 || chestRemoved > 0)
+                Plugin.Log.LogInfo($"[EntityRegistry] Purge: fish={fishRemoved} chest={chestRemoved} removed (remaining: fish={AllFish.Count} item={AllItems.Count} chest={AllChests.Count})");
+        }
     }
 }
 
@@ -37,25 +50,56 @@ public static class EntityRegistry
 [HarmonyPatch(typeof(PickupInstanceItem), nameof(PickupInstanceItem.OnEnable))]
 static class PickupItemOnEnablePatch
 {
-    static void Postfix(PickupInstanceItem __instance) => EntityRegistry.AllItems.Add(__instance);
+    static void Postfix(PickupInstanceItem __instance)
+    {
+        EntityRegistry.AllItems.Add(__instance);
+        if (Features.DiveMap.DebugLog?.Value == true)
+            Plugin.Log.LogInfo($"[EntityRegistry] Item+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllItems.Count})");
+    }
 }
 
 [HarmonyPatch(typeof(PickupInstanceItem), nameof(PickupInstanceItem.OnDisable))]
 static class PickupItemOnDisablePatch
 {
-    static void Postfix(PickupInstanceItem __instance) => EntityRegistry.AllItems.Remove(__instance);
+    static void Postfix(PickupInstanceItem __instance)
+    {
+        EntityRegistry.AllItems.Remove(__instance);
+        if (Features.DiveMap.DebugLog?.Value == true)
+            Plugin.Log.LogInfo($"[EntityRegistry] Item- {__instance.gameObject.name} (total={EntityRegistry.AllItems.Count})");
+    }
 }
 
 [HarmonyPatch(typeof(InstanceItemChest), nameof(InstanceItemChest.OnEnable))]
 static class ChestOnEnablePatch
 {
-    static void Postfix(InstanceItemChest __instance) => EntityRegistry.AllChests.Add(__instance);
+    static void Postfix(InstanceItemChest __instance)
+    {
+        EntityRegistry.AllChests.Add(__instance);
+        if (Features.DiveMap.DebugLog?.Value == true)
+            Plugin.Log.LogInfo($"[EntityRegistry] Chest+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllChests.Count})");
+    }
+}
+
+[HarmonyPatch(typeof(InstanceItemChest), nameof(InstanceItemChest.SuccessInteract))]
+static class ChestSuccessInteractPatch
+{
+    static void Postfix(InstanceItemChest __instance)
+    {
+        EntityRegistry.AllChests.Remove(__instance);
+        if (Features.DiveMap.DebugLog?.Value == true)
+            Plugin.Log.LogInfo($"[EntityRegistry] Chest- (interact) {__instance.gameObject.name} (total={EntityRegistry.AllChests.Count})");
+    }
 }
 
 [HarmonyPatch(typeof(FishInteractionBody), nameof(FishInteractionBody.Awake))]
 static class FishAwakePatch
 {
-    static void Postfix(FishInteractionBody __instance) => EntityRegistry.AllFish.Add(__instance);
+    static void Postfix(FishInteractionBody __instance)
+    {
+        EntityRegistry.AllFish.Add(__instance);
+        if (Features.DiveMap.DebugLog?.Value == true)
+            Plugin.Log.LogInfo($"[EntityRegistry] Fish+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllFish.Count})");
+    }
 }
 
 [HarmonyPatch(typeof(PlayerCharacter), nameof(PlayerCharacter.Update))]

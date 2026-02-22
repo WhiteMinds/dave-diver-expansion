@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using BepInEx.Configuration;
 using DaveDiverExpansion.Helpers;
+using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -24,6 +26,7 @@ public static class DiveMap
     public static ConfigEntry<float> MapSize;
     public static ConfigEntry<float> MapOpacity;
     public static ConfigEntry<float> MiniMapZoom;
+    public static ConfigEntry<bool> DebugLog;
 
     public static void Init(ConfigFile config)
     {
@@ -57,6 +60,9 @@ public static class DiveMap
             "DiveMap", "MiniMapZoom", 3f,
             new ConfigDescription("Minimap zoom level (higher = more zoomed in)",
                 new AcceptableValueRange<float>(1f, 10f)));
+        DebugLog = config.Bind(
+            "Debug", "DebugLog", false,
+            "Enable verbose debug logging for DiveMap diagnostics");
         ClassInjector.RegisterTypeInIl2Cpp<DiveMapBehaviour>();
         var go = new GameObject("DDE_DiveMapUpdater");
         Object.DontDestroyOnLoad(go);
@@ -125,9 +131,19 @@ public class DiveMapBehaviour : MonoBehaviour
     private int _prevEscapeIdx;   // how many escape markers were active last frame
     private int _prevEntityIdx;   // how many entity markers were active last frame
     private int _renderSkipCount; // frame counter for camera render skipping
+    private HashSet<string> _fishDebugLogged; // log each fish prefab name only once
+    private bool _chestDebugDone;  // log chest details only once per scene
     private const float MinScanInterval = 1.0f;
     private const int RenderEveryNFrames = 3;  // map camera renders once per N frames (~20 FPS at 60)
     private const int TexBaseHeight = 256;     // RenderTexture height (was 512)
+    private const float BaseMiniMapOrtho = 45f; // fixed minimap half-height in world units (visible height = 90u)
+
+    // IL2CPP low-level pointers for reading FishAggressionType without Sirenix reference
+    // FishAggressionType: None=0, OnlyRun=1, Attack=2, Custom=3, Neutral=4, OnlyMoveWaypoint=5
+    private static System.IntPtr _saFishSysClassPtr;
+    private static System.IntPtr _fishAIDataFieldPtr;
+    private static System.IntPtr _aggrTypeFieldPtr;
+    private static bool _aggrCacheInit;
 
     private void EnsureLists()
     {
@@ -137,6 +153,7 @@ public class DiveMapBehaviour : MonoBehaviour
         if (_staticCache == null) _staticCache = new List<(Vector3, Color)>();
         if (_fishCache == null) _fishCache = new List<(Transform, Color)>();
         if (_nightOverlayRenderers == null) _nightOverlayRenderers = new List<Renderer>();
+        if (_fishDebugLogged == null) _fishDebugLogged = new HashSet<string>();
     }
 
     private void Update()
@@ -450,9 +467,9 @@ public class DiveMapBehaviour : MonoBehaviour
         }
         else
         {
-            // Minimap: follow player with zoom, square view (1:1 texture)
+            // Minimap: follow player with zoom, fixed world-space viewport
             float zoom = DiveMap.MiniMapZoom.Value;
-            float ortho = _fullOrthoSize / zoom;
+            float ortho = BaseMiniMapOrtho / zoom;
             _mapCamera.orthographicSize = ortho;
 
             // Square texture → halfW = halfH = ortho
@@ -653,6 +670,7 @@ public class DiveMapBehaviour : MonoBehaviour
 
         // Static entities: chests + items (don't move, but can be opened/picked up)
         _staticCache.Clear();
+        int itemSkipped = 0;
         if (DiveMap.ShowItems.Value)
         {
             try
@@ -660,6 +678,7 @@ public class DiveMapBehaviour : MonoBehaviour
                 foreach (var item in EntityRegistry.AllItems)
                 {
                     if (item == null) continue;
+                    if (!item.gameObject.activeInHierarchy) { itemSkipped++; continue; }
                     var pos = item.transform.position;
                     if (pos == Vector3.zero) continue;
                     _staticCache.Add((pos, new Color(1f, 0.9f, 0.2f))); // yellow
@@ -667,6 +686,8 @@ public class DiveMapBehaviour : MonoBehaviour
             }
             catch { }
         }
+        int chestSkipped = 0;
+        bool debugChest = DiveMap.DebugLog.Value && !_chestDebugDone;
         if (DiveMap.ShowChests.Value)
         {
             try
@@ -674,36 +695,58 @@ public class DiveMapBehaviour : MonoBehaviour
                 foreach (var chest in EntityRegistry.AllChests)
                 {
                     if (chest == null) continue;
+                    bool active = chest.gameObject.activeInHierarchy;
+                    if (!active) { chestSkipped++; if (debugChest) Plugin.Log.LogInfo($"[DiveMap] chest: {chest.gameObject.name} SKIP(inactive)"); continue; }
+                    bool isOpen = false;
+                    try { isOpen = chest.IsOpen; } catch { chestSkipped++; continue; }
+                    if (isOpen) { chestSkipped++; if (debugChest) Plugin.Log.LogInfo($"[DiveMap] chest: {chest.gameObject.name} SKIP(IsOpen)"); continue; }
                     var pos = chest.transform.position;
                     if (pos == Vector3.zero) continue;
-                    if (chest.IsOpen) continue;
                     var chestName = chest.gameObject.name;
                     bool isO2 = chestName.Contains("O2") || chestName.Contains("ShellFish004");
                     bool isIngredient = chestName.Contains("IngredientPot");
                     var color = isO2 ? new Color(0.2f, 0.85f, 1f)
                               : isIngredient ? new Color(0.85f, 0.2f, 0.6f)
                               : new Color(1f, 0.6f, 0.2f);
+                    if (debugChest) Plugin.Log.LogInfo($"[DiveMap] chest: {chestName} IsOpen={isOpen} pos={pos}");
                     _staticCache.Add((pos, color));
                 }
             }
             catch { }
+            if (debugChest) _chestDebugDone = true;
         }
 
         // Moving entities: fish (need position updates every frame)
         _fishCache.Clear();
+        int fishSkipped = 0;
         if (DiveMap.ShowFish.Value)
         {
             try
             {
+                bool debugFish = DiveMap.DebugLog.Value;
                 foreach (var fish in EntityRegistry.AllFish)
                 {
                     if (fish == null) continue;
+                    if (!fish.gameObject.activeInHierarchy) { fishSkipped++; continue; }
                     if (fish.transform.position == Vector3.zero) continue;
-                    // Aggressive fish lack AwayFromTarget (they attack instead of fleeing)
-                    bool aggressive = fish.GetComponent<DR.AI.AwayFromTarget>() == null;
+                    // Determine aggression via FishAIData.AggressionType
+                    // Attack=2 always aggressive; Custom=3 depends on AwayFromTarget
+                    int aggrType = GetAggressionType(fish);
+                    bool hasAFT = fish.GetComponent<DR.AI.AwayFromTarget>() != null;
+                    bool aggressive;
+                    if (aggrType >= 0)
+                        aggressive = aggrType == 2 || (aggrType == 3 && !hasAFT);
+                    else
+                        aggressive = !hasAFT; // fallback
+                    // Catchable fish (shrimp, seahorse): Custom + AwayFromTarget
+                    bool catchable = aggrType == 3 && hasAFT;
                     var color = aggressive
                         ? new Color(1f, 0.3f, 0.2f)   // red for aggressive
-                        : new Color(0.3f, 0.6f, 1f);   // blue for normal
+                        : catchable
+                            ? new Color(0.4f, 1f, 0.4f)  // green for catchable (shrimp/seahorse)
+                            : new Color(0.3f, 0.6f, 1f);  // blue for normal
+                    if (debugFish && _fishDebugLogged.Add(fish.gameObject.name))
+                        LogFishDebug(fish, aggressive);
                     _fishCache.Add((fish.transform, color));
                 }
             }
@@ -711,6 +754,13 @@ public class DiveMapBehaviour : MonoBehaviour
         }
 
         _cachedEntityCount = _staticCache.Count + _fishCache.Count;
+
+        if (DiveMap.DebugLog.Value)
+        {
+            Plugin.Log.LogInfo($"[DiveMap] scan: static={_staticCache.Count}(itemSkip={itemSkipped},chestSkip={chestSkipped})" +
+                $" fish={_fishCache.Count}(skip={fishSkipped})" +
+                $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count})");
+        }
     }
 
     /// <summary>
@@ -750,7 +800,7 @@ public class DiveMapBehaviour : MonoBehaviour
             try
             {
                 var tr = _fishCache[i].tr;
-                if (tr == null) continue;
+                if (tr == null || !tr.gameObject.activeInHierarchy) continue;
                 var m = _entityMarkers[idx++];
                 m.color = _fishCache[i].color;
                 m.gameObject.SetActive(SetMarkerPosition(m, tr.position));
@@ -819,6 +869,8 @@ public class DiveMapBehaviour : MonoBehaviour
         _nightOverlayRenderers.Clear();
         _escapeScanned = false;
         _nightOverlayScanned = false;
+        _fishDebugLogged?.Clear();
+        _chestDebugDone = false;
         _cachedEntityCount = 0;
         _showBigMap = false;
         _lastBigMap = false;
@@ -828,6 +880,79 @@ public class DiveMapBehaviour : MonoBehaviour
     }
 
     private void OnDestroy() { Cleanup(); }
+
+    /// <summary>
+    /// Reads FishAggressionType from SABaseFishSystem.FishAIData.AggressionType
+    /// via IL2CPP native field offsets (avoids Sirenix type reference).
+    /// Returns: None=0, OnlyRun=1, Attack=2, Custom=3, Neutral=4, OnlyMoveWaypoint=5, or -1 on failure.
+    /// </summary>
+    private static int GetAggressionType(FishInteractionBody fish)
+    {
+        if (!_aggrCacheInit)
+        {
+            _aggrCacheInit = true;
+            try
+            {
+                _saFishSysClassPtr = IL2CPP.GetIl2CppClass("Assembly-CSharp.dll", "DR.AI", "SABaseFishSystem");
+                _fishAIDataFieldPtr = IL2CPP.GetIl2CppField(_saFishSysClassPtr, "FishAIData");
+                var fishDataClass = IL2CPP.GetIl2CppClass("Assembly-CSharp.dll", "", "SAFishData");
+                _aggrTypeFieldPtr = IL2CPP.GetIl2CppField(fishDataClass, "AggressionType");
+            }
+            catch (System.Exception e)
+            {
+                Plugin.Log.LogWarning($"[DiveMap] AggressionType cache init failed: {e.Message}");
+                _saFishSysClassPtr = System.IntPtr.Zero;
+            }
+        }
+        if (_saFishSysClassPtr == System.IntPtr.Zero) return -1;
+
+        try
+        {
+            var comps = fish.gameObject.GetComponents<Component>();
+            foreach (var c in comps)
+            {
+                if (c == null) continue;
+                if (c.GetIl2CppType().FullName != "DR.AI.SABaseFishSystem") continue;
+
+                var aiPtr = c.Pointer;
+                int dataOffset = (int)IL2CPP.il2cpp_field_get_offset(_fishAIDataFieldPtr);
+                var fishDataPtr = Marshal.ReadIntPtr(aiPtr, dataOffset);
+                if (fishDataPtr == System.IntPtr.Zero) return -1;
+
+                int aggrOffset = (int)IL2CPP.il2cpp_field_get_offset(_aggrTypeFieldPtr);
+                return Marshal.ReadInt32(fishDataPtr, aggrOffset);
+            }
+        }
+        catch { }
+        return -1;
+    }
+
+    private static string AggrTypeName(int val) => val switch
+    {
+        0 => "None", 1 => "OnlyRun", 2 => "Attack", 3 => "Custom",
+        4 => "Neutral", 5 => "OnlyMoveWaypoint", _ => $"Unknown({val})"
+    };
+
+    /// <summary>
+    /// Logs detailed fish properties for debugging aggressive detection.
+    /// Called once per unique fish prefab name when DebugLog is enabled.
+    /// </summary>
+    private static void LogFishDebug(FishInteractionBody fish, bool aggressive)
+    {
+        try
+        {
+            string name = fish.gameObject.name;
+            bool hasAFT = fish.GetComponent<DR.AI.AwayFromTarget>() != null;
+            int aggrType = GetAggressionType(fish);
+            string interType = "?";
+            try { interType = $"{fish.InteractionType}({(int)fish.InteractionType})"; } catch { }
+            Plugin.Log.LogInfo($"[DiveMap] fish: {name} | AggrType={AggrTypeName(aggrType)} AFT={hasAFT} InterType={interType} → aggressive={aggressive}");
+        }
+        catch (System.Exception e)
+        {
+            Plugin.Log.LogInfo($"[DiveMap] fish: {fish?.gameObject?.name ?? "?"} debug error: {e.Message}");
+        }
+    }
 
     private static GameObject CreateUIObject(string name, GameObject parent)
     {

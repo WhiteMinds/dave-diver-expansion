@@ -114,9 +114,10 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 | `Interaction.Escape.EscapeMirror` | 逃生镜区域 | `transform.position`，`IsAvaiableUseMirror()`，冰川区域可能有 |
 | `OxygenArea` | 氧气补充区域 | `minHP`, `chargeTime`, `isCharging`（注意：不在宝箱上） |
 | `SceneLoader` | 场景加载器 | `k_SceneName_MermanVillage`（鲛人村场景名常量） |
-| `SABaseFishSystem` | 鱼 AI 系统基类 | 所有鱼都有此组件，存储 AI 数据 |
-| `DR.AI.AwayFromTarget` : `AIAbility` | 逃跑 AI 能力 | 非攻击性鱼有此组件；攻击性鱼没有 |
-| `SAFishData` : `ScriptableObject` | 鱼配置数据 | `AggressionType`（`FishAggressionType` 枚举）。是 ScriptableObject，不在 GameObject 上 |
+| `DR.AI.SABaseFishSystem` : `SpecialAttackerFishAISystem` | 鱼 AI 系统 | 所有鱼都有此组件。`FishAIData`(SAFishData)、`IsAggressive`(virtual bool)。**注意**：继承链依赖 `Sirenix.Serialization`，interop 中缺少 `SerializedScriptableObject` 包装类，**不能直接用 `GetComponent<SABaseFishSystem>()`**，需通过 IL2CPP 低级 API 访问（见下方说明） |
+| `DR.AI.AwayFromTarget` : `AIAbility` | 逃跑 AI 能力 | 大多数非攻击性鱼有此组件。**但部分攻击性鱼也有**（如虾、海马、鱿鱼），不能仅凭此判断攻击性 |
+| `SAFishData` : `SerializedScriptableObject` | 鱼配置数据 | `AggressionType`(FishAggressionType 枚举)、`PeckingOrder`(int)。通过 `SABaseFishSystem.FishAIData` 访问 |
+| `FishInteractionBody` 内部枚举 | 鱼交互类型 | `FishInteractionType`: None=0, Carving=1, Pickup=2, Calldrone=3 |
 | `DR.CameraSubBoundsCollection` | 相机子区域集合 | `m_BoundsList`（`List<CameraSubBounds>`）。通过 `InGameManager.SubBoundsCollection` 访问 |
 | `DR.CameraSubBounds` | 单个相机子区域 | `Bounds`（Unity `Bounds`，含 center/size/min/max） |
 | `Common.Contents.MoveScenePanel` | 场景切换菜单面板 | `OnPlayerEnter(bool)`, `ShowList(bool)`, `OnOpen()`, `OnClick()`, `OnCancel()`, `IsOpened`, `IsEntered` |
@@ -186,7 +187,8 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 - `SaveUserOptions` 是序列化数据类（非 MonoBehaviour、非单例），需要通过 Harmony 补丁捕获实例或值
 - `SaveSystemUserOptionManager` 管理 SaveUserOptions 实例，但该类在 interop DLL 中无法被 ilspycmd 定位
 - 游戏广泛使用 `SystemLanguage`（Unity 内置枚举）处理字体、日期等
-- Mod 获取游戏语言的推荐方式：Harmony 补丁 `SaveUserOptions.get_CurrentLanguage` 的 Postfix 缓存返回值
+- **⚠️ `get_CurrentLanguage` Harmony Postfix 会产生大量垃圾值**：IL2CPP 中该 getter 会被无关的 save-data 字段读取触发，返回 999、99999、17000 等无意义整数值。**不能**直接缓存最后一次返回值
+- Mod 获取游戏语言的推荐方式：Harmony 补丁 `SaveUserOptions.get_CurrentLanguage` 的 Postfix 中，仅当返回 `Chinese(6)` 或 `ChineseTraditional(41)` 时设置 `SeenChinese=true` 标记（可靠正信号），忽略所有其他值
 
 ## 首次设置
 
@@ -230,7 +232,11 @@ ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
   - 静态类定义 `ConfigEntry` 绑定 + `Init(ConfigFile)` 方法
   - 功能专属的 `[HarmonyPatch]` 类
 - `Helpers/` — 共享工具方法和基础设施补丁
-  - `EntityRegistry` — 通过 Harmony 生命周期补丁维护 `AllFish`/`AllItems`/`AllChests` 注册表，自带 `Purge()` 清理机制，供 AutoPickup 和 DiveMap 共享读取
+  - `EntityRegistry` — 通过 Harmony 生命周期补丁维护 `AllFish`/`AllItems`/`AllChests` 注册表，供 AutoPickup 和 DiveMap 共享读取
+    - Items: `OnEnable` 注册 / `OnDisable` 移除（精确生命周期）
+    - Chests: `OnEnable` 注册 / `SuccessInteract` 立即移除（玩家开箱时）+ `Purge()` 清理 null（被销毁时）
+    - Fish: `Awake` 注册 / `Purge()` 清理 null（无 OnDisable/OnDestroy 钩子）
+    - `Purge()` 每 2 秒运行一次（通过 `PlayerCharacter.Update` Postfix），清除已被 Unity 销毁的对象引用
 
 ## 构建配置
 
@@ -358,6 +364,11 @@ cd "$SKILL_DIR" && node run.js "F:/Projects/dave-diver-expansion/.tmp/pw-nexusmo
 | BBCode 切换 | `.modesw`（最后一个） | textarea 默认隐藏，需先点此 |
 | 描述 textarea | `textarea#mod_description` | BBCode 模式下可见 |
 | 保存按钮 | `button[type="submit"].bottom-save` | fallback: 任意可见 Save |
+| Media 页 `?step=media&id=20` | | |
+| 视频标题 | `input[name="video_title"]` | |
+| YouTube URL | `input[name="video_url"]` | 仅支持 YouTube |
+| 视频描述 | `textarea#video_description` | |
+| 添加视频按钮 | `button#upload_video` | "Add this video" |
 
 **已知文件 ID**：
 - v0.1.0: `file_id=152` | v0.2.0: `file_id=153` | v0.3.0: `file_id=154`
@@ -388,6 +399,12 @@ DaveDiverExpansion-v0.3.0.zip
 - Harmony 补丁目标是 interop 包装方法，`typeof(ClassName)` 直接引用 interop 类型
 - 不要在代码中使用 `System.Reflection` 访问 IL2CPP 类型的私有成员，使用 Il2CppInterop API
 - `Object.FindObjectsOfType<T>()` 可用于扫描场景中的游戏对象
+- **当 interop 类型的继承链依赖第三方库（如 Sirenix）导致 CS0012 编译错误时**：
+  - 不能直接用 `GetComponent<T>()` 或 `typeof(T)`，会触发引用链
+  - 解决方案：通过 `IL2CPP.GetIl2CppClass()` + `IL2CPP.GetIl2CppField()` + `Marshal.ReadIntPtr/ReadInt32` 直接读取原生字段
+  - 遍历 `GetComponents<Component>()` 后用 `c.GetIl2CppType().FullName` 匹配目标类型
+  - 实际案例：DiveMap 读取 `SABaseFishSystem.FishAIData.AggressionType`（SAFishData 继承 Sirenix.SerializedScriptableObject，该类型在 interop 中缺失）
+  - **注意**：`c.GetType().GetProperty("X")` 对 IL2CPP 类型不工作 — `GetComponents<Component>()` 返回的对象 .NET 类型是 `Component`，不是实际派生类型
 
 ## 配置系统
 
@@ -397,7 +414,7 @@ DaveDiverExpansion-v0.3.0.zip
   - 基于 UnityEngine.UI (uGUI)，纯代码构建，零第三方依赖
   - 使用 `ClassInjector.RegisterTypeInIl2Cpp` 注册 MonoBehaviour，全场景热键检测
   - 自动发现所有 `ConfigEntry`，按自定义顺序分组显示
-  - Section 显示顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap`（硬编码在 `sectionOrder` 数组中，未列出的 section 追加到末尾）
+  - Section 显示顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `Debug`（硬编码在 `sectionOrder` 数组中，未列出的 section 追加到末尾）
   - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown，其余 → InputField
   - **KeyCode 按键绑定**：点击按钮进入监听模式（显示"请按键..."），下一次按键被捕获为新值，ESC 取消。通过 `_listeningEntry` 静态字段追踪监听状态，`ProcessKeyListen()` 在 `CheckToggle()` 中优先于所有热键处理
   - 修改立即生效，ConfigFile 自动保存
@@ -407,7 +424,7 @@ DaveDiverExpansion-v0.3.0.zip
 ## 潜水地图 (DiveMap)
 
 - `Features/DiveMap.cs` 实现潜水 HUD 小地图和大地图
-- **小地图**：右上角，跟随玩家，可配置缩放级别（`MiniMapZoom`）
+- **小地图**：右上角，跟随玩家，固定世界空间视野（`BaseMiniMapOrtho=45`，与关卡大小无关），可通过 `MiniMapZoom` 缩放
 - **大地图**：按 M 键切换，屏幕中央显示完整关卡
 - 技术方案：独立正交 Camera → **正方形** RenderTexture → RawImage
   - Camera 必须 `CopyFrom(mainCam)` 继承 URP 管线设置
@@ -426,8 +443,8 @@ DaveDiverExpansion-v0.3.0.zip
   - ESC 暂停菜单打开时：隐藏小地图 + 禁用 M 键切换（通过 `MainCanvasManager.pausePopupPanel.gameObject.activeSelf` 检测）
 - **性能优化：EntityRegistry + 扫描与重定位分离**
   - 实体来源：从 `EntityRegistry.AllFish`/`AllItems`/`AllChests` 读取（Harmony 生命周期补丁维护，无 `FindObjectsOfType`）
-  - 扫描阶段（每 1s）：遍历注册表，过滤已打开宝箱，缓存引用/坐标
-  - 重定位阶段（每帧）：从缓存读取坐标，更新 UI 标记位置
+  - 扫描阶段（每 1s）：遍历注册表，过滤 `!activeInHierarchy`（死鱼/已开箱/禁用物品），缓存引用/坐标
+  - 重定位阶段（每帧）：从缓存读取坐标，更新 UI 标记位置（鱼的 Transform 引用也检查 activeInHierarchy）
   - 逃生点：`FindObjectsOfType<EscapePodZone/EscapeMirror>` 扫描一次（静态，不移动）
   - 箱子/物品：不移动，缓存 `Vector3` 坐标
   - 鱼：会移动，缓存 `Transform` 引用，每帧读 `position`
@@ -437,7 +454,8 @@ DaveDiverExpansion-v0.3.0.zip
   - 深海区域同样使用 EscapePodZone（无特殊深海逃生类型）
   - UI 标记池预分配 50 个（场景最多见 9 个，留余量）
 - **标记颜色**
-  - 玩家：白色 | 逃生点：绿色 | 鱼：蓝色 | 攻击性鱼：红色
+  - 玩家：白色 | 逃生点：绿色
+  - 普通鱼：蓝色 | 攻击性鱼：红色 | 可捕捉生物（虾/海马）：浅绿色
   - 物品：黄色 | 宝箱：橙色 | 氧气宝箱：青色 | 食材罐：紫红色
 - **宝箱 prefab 名称分类**
   - `Chest_O2(Clone)` — 浅海氧气宝箱
@@ -446,9 +464,39 @@ DaveDiverExpansion-v0.3.0.zip
   - `Chest_IngredientPot_A/B/C(Clone)` — 食材罐
   - `Chest_Rock(Clone)` — 岩石箱 | `Quest_Drone_*_Box` — 任务箱
   - `OxygenArea` 组件不在宝箱上（所有宝箱 `hasOxygenArea=False`），不能用于检测 O2 箱
-- **攻击性鱼检测**：`fish.GetComponent<DR.AI.AwayFromTarget>() == null`
-  - 普通鱼有 `AwayFromTarget` 组件（遇敌逃跑），攻击性鱼没有
-  - 注意 `AwayFromTarget` 在命名空间 `DR.AI` 下
+- **鱼攻击性检测（FishAggressionType）**
+  - 通过 IL2CPP 低级 API 读取 `SABaseFishSystem.FishAIData.AggressionType` 字段值
+  - `FishAggressionType` 枚举：`None=0, OnlyRun=1, Attack=2, Custom=3, Neutral=4, OnlyMoveWaypoint=5`
+  - 判定逻辑：`Attack(2)` → 攻击性 | `Custom(3) + 无 AwayFromTarget` → 攻击性 | 其余 → 非攻击性
+  - `Custom(3) + 有 AwayFromTarget` → 可捕捉生物（虾、海马等，空格直接捕捉）
+  - ⚠️ **不能仅用 `AwayFromTarget == null` 判断**：鱿鱼（SpearSquid, Humboldt_Squid）有 AwayFromTarget 但实为攻击性
+  - 已验证的鱼种分类（日志实测）：
+
+    | AggressionType | AwayFromTarget | 鱼种举例 | 地图颜色 |
+    |---|---|---|---|
+    | Attack | 无 | 鲨鱼、海鳗、狮子鱼、梭鱼、水母 | 红 |
+    | Attack | 有 | 长枪乌贼、洪堡鱿鱼 | 红 |
+    | Custom | 无 | 河豚、鹦鹉螺 | 红 |
+    | Custom | 有 | 白对虾、黑虎虾、海马 | 浅绿 |
+    | OnlyRun | 有 | 大多数普通鱼 | 蓝 |
+    | OnlyMoveWaypoint | 无 | 金枪鱼（路径移动） | 蓝 |
+
+  - **IL2CPP 低级 API 读取方式**（绕过 Sirenix 类型引用限制）：
+    ```csharp
+    // 缓存类指针和字段偏移（只需初始化一次）
+    var classPtr = IL2CPP.GetIl2CppClass("Assembly-CSharp.dll", "DR.AI", "SABaseFishSystem");
+    var fieldPtr = IL2CPP.GetIl2CppField(classPtr, "FishAIData");
+    var dataClassPtr = IL2CPP.GetIl2CppClass("Assembly-CSharp.dll", "", "SAFishData");
+    var aggrFieldPtr = IL2CPP.GetIl2CppField(dataClassPtr, "AggressionType");
+    // 读取：遍历 GetComponents<Component>() 找到 SABaseFishSystem（通过 GetIl2CppType().FullName 匹配）
+    // 然后用 Marshal.ReadIntPtr / Marshal.ReadInt32 + il2cpp_field_get_offset 读取字段值
+    ```
+  - 此技术可推广到任何因第三方依赖（如 Sirenix）导致无法直接引用的 interop 类型
+- **调试日志**（`Debug` section 的 `DebugLog` ConfigEntry）
+  - EntityRegistry: 实体注册/移除事件（Item+/-, Chest+/-, Fish+, Purge 统计）
+  - DiveMap scan: 每次扫描的实体计数统计
+  - Fish: 每种鱼首次出现时输出 AggressionType、AwayFromTarget、InteractionType
+  - 宝箱: 每种宝箱首次出现时输出 name、IsOpen、activeInHierarchy
 - Config: Enabled, ToggleKey(M), ShowEscapePods, ShowFish, ShowItems, ShowChests, MapSize, MapOpacity, MiniMapZoom
 
 ## 快速场景切换 (QuickSceneSwitch)
@@ -484,8 +532,8 @@ MoveSceneElement (单个选项)
 - `Helpers/I18n.cs` 提供轻量翻译系统，仅支持中/英两种语言
 - 英文为默认语言（即 key），中文翻译存储在 `ZhCn` 字典中
 - 调用方式：`I18n.T("Enabled")` — 中文环境返回 `"启用"`，英文环境返回 `"Enabled"`
-- 语言检测优先级：ConfigEntry 手动设置 > Harmony 缓存的游戏语言 > OS 系统语言
-- Harmony Postfix 补丁 `SaveUserOptions.get_CurrentLanguage` 自动缓存游戏语言
+- 语言检测优先级：ConfigEntry 手动设置 > `SeenChinese` 标记 > `Application.systemLanguage` 回退
+- Harmony Postfix 补丁 `SaveUserOptions.get_CurrentLanguage`：仅在检测到 Chinese/ChineseTraditional 时设置 `SeenChinese=true`（见「游戏语言系统」中关于垃圾值的说明）
 - **添加新功能翻译**：在 `I18n.cs` 的 `ZhCn` 字典中添加 `["EnglishKey"] = "中文值"` 条目
 - ConfigUI 面板每次打开时重新渲染，语言切换立即生效
 
