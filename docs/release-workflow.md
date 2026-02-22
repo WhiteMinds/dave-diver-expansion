@@ -67,10 +67,17 @@ git add lib/                  # 新 DLL 通过 Git LFS 存储
 | 文件 | 内容 | 必须 |
 |------|------|------|
 | `src/.../Plugin.cs:38` | `PLUGIN_VERSION = "X.Y.Z"` | ✅ |
-| `docs/nexusmods-description.bbcode` | Features + Settings + Changelog | ✅ |
+| `docs/nexusmods-description.bbcode` | Features + Settings + Changelog（见下方注意事项） | ✅ |
 | `README.md` | Features + Settings 表格 | ✅ |
 | `.tmp/pw-nexusmods-release.js` | `VERSION` / `PREV_FILE_ID` / `FILE_DESCRIPTION` | ✅ |
 | `lib/` | 运行 `update-lib.sh` 确保与 `Directory.Build.props` 同步 | ✅ |
+
+**⚠️ Changelog 要详细、完整**：
+
+Changelog 不仅要列出新功能，还要包含 bug 修复和行为改进。撰写时应逐条对照上一版本以来的所有 commit 和开发记录，避免遗漏：
+- 新功能（New feature）
+- Bug 修复（例如标记颜色错误、物品拾取后标记未消失）
+- 行为改进（例如小地图在小场景中的边界计算优化）
 
 ## NexusMods 上传
 
