@@ -25,6 +25,7 @@ public static class ConfigUI
     private static GameObject _overlayGO;
     private static Text _titleText;
     private static bool _isVisible;
+    private static bool _lastLangChinese;
 
     // "Press any key" listening state
     private static ConfigEntryBase _listeningEntry;
@@ -68,6 +69,19 @@ public static class ConfigUI
             return;
         }
 
+        // Detect language change while panel is visible and rebuild immediately
+        if (_isVisible && _canvasGO != null)
+        {
+            bool isChinese = I18n.IsChinese();
+            if (isChinese != _lastLangChinese)
+            {
+                _lastLangChinese = isChinese;
+                if (_titleText != null)
+                    _titleText.text = I18n.T("DaveDiverExpansion Settings");
+                RebuildEntries();
+            }
+        }
+
         try
         {
             // ESC closes panel if visible
@@ -94,6 +108,7 @@ public static class ConfigUI
 
         if (_isVisible)
         {
+            _lastLangChinese = I18n.IsChinese();
             if (_titleText != null)
                 _titleText.text = I18n.T("DaveDiverExpansion Settings");
             RebuildEntries();

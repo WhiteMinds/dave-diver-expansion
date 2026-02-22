@@ -261,6 +261,97 @@ itemLabel.alignment = TextAnchor.MiddleLeft;
 
 ---
 
+## 9. 运行时生成 Sprite（Texture2D 像素绘制）
+
+**场景**：需要不同形状的标记图标（圆形、菱形、三角、方形），但不想嵌入外部 PNG 资源，也不想依赖游戏的 SpriteCollection/Addressables。
+
+**方案**：启动时用 `Texture2D` 逐像素绘制形状，通过 `Sprite.Create()` 转为 Sprite，按形状缓存到 static Dictionary。颜色通过 `Image.color` 动态着色（纹理本身为白色+深色边框，Unity Image 的 color 属性会乘以 sprite 颜色）。
+
+```csharp
+// 生成 20×20 白色圆形 + 深色描边的 Sprite
+var tex = new Texture2D(20, 20, TextureFormat.RGBA32, false);
+tex.filterMode = FilterMode.Bilinear;
+for (int y = 0; y < 20; y++)
+    for (int x = 0; x < 20; x++)
+    {
+        float dist = Mathf.Sqrt((x-9.5f)*(x-9.5f) + (y-9.5f)*(y-9.5f)) - 7f;
+        Color32 pixel;
+        if (dist < -1.5f)       pixel = new Color32(255,255,255,255);  // 白色填充
+        else if (dist < 0.5f)   pixel = new Color32(20,20,20,240);     // 深色描边
+        else if (dist < 2.5f) { float t = (dist-0.5f)/2f; pixel = new Color32(0,0,0,(byte)(160*(1-t))); }  // 外发光
+        else                    pixel = new Color32(0,0,0,0);          // 透明
+        tex.SetPixel(x, y, pixel);
+    }
+tex.Apply(false);
+var sprite = Sprite.Create(tex, new Rect(0,0,20,20), new Vector2(0.5f,0.5f), 20f);
+
+// 使用时通过 Image.color 着色
+img.sprite = sprite;
+img.color = new Color(1f, 0.3f, 0.2f); // 红色
+```
+
+**要点**：
+- 纹理大小（如 20×20）要匹配最终渲染大小——太大浪费内存，太小描边不可见
+- 描边宽度在纹理空间中的像素数 ÷ (纹理大小 / 屏幕渲染大小) = 屏幕上的像素数。如果标记在屏幕上只有 5px，20px 纹理中 2px 的描边只有 0.5 屏幕像素
+- 外发光带使用渐变 alpha (`(0,0,0,fading_alpha)`)，因为 RGB 是 0 所以 `Image.color` 乘法不会改变发光颜色（始终是黑色阴影效果）
+- 形状判断使用 SDF（Signed Distance Field）思路：计算像素到形状边缘的距离，根据距离决定填充/描边/发光/透明
+- 缓存为 static Dictionary，跨场景复用，不需要在 Cleanup 中销毁
+
+---
+
+## 10. 语言即时切换模式
+
+**场景**：用户在 ConfigUI 面板中切换 Language dropdown 后，所有已渲染的 UI 文本（标签、section 名、图例等）应立即更新，不需要关闭重开或重启。
+
+**方案**：在 `Update()`/`CheckToggle()` 中检测 `I18n.IsChinese()` 变化，变化时重建/刷新文本。
+
+### ConfigUI 面板（重建策略）
+
+ConfigUI 使用完整重建：检测语言变化后调用 `RebuildEntries()` 销毁并重建所有条目 UI。因为 ConfigUI 的条目包含复杂控件（Slider、Toggle、Dropdown），缓存-刷新的复杂度不亚于重建。
+
+```csharp
+private static bool _lastLangChinese;
+
+// 在 CheckToggle() 中，面板可见时检测
+if (_isVisible && _canvasGO != null)
+{
+    bool isChinese = I18n.IsChinese();
+    if (isChinese != _lastLangChinese)
+    {
+        _lastLangChinese = isChinese;
+        _titleText.text = I18n.T("DaveDiverExpansion Settings");
+        RebuildEntries(); // 销毁所有条目 UI 并重建
+    }
+}
+```
+
+### DiveMap 图例（刷新策略）
+
+DiveMap 图例是纯展示型（图标+文本），使用缓存刷新：创建时保存 `List<(Text text, string key)>`，语言变化时遍历更新 `text.text = I18n.T(key)`。
+
+```csharp
+private List<(Text text, string key)> _legendTexts;
+private bool _legendLangChinese;
+
+// 创建时缓存
+_legendTexts.Add((text, "Catchable Fish"));
+
+// 每帧检测（仅大地图可见时）
+bool isChinese = I18n.IsChinese();
+if (isChinese != _legendLangChinese)
+{
+    _legendLangChinese = isChinese;
+    foreach (var (text, key) in _legendTexts)
+        if (text != null) text.text = I18n.T(key);
+}
+```
+
+**选择策略**：
+- 复杂面板（含交互控件）→ 重建整个面板
+- 纯文本展示 → 缓存 Text 引用 + 遍历刷新
+
+---
+
 ## 开发 Checklist
 
 在 IL2CPP 环境下开发 uGUI 时，对照检查：
@@ -280,6 +371,9 @@ itemLabel.alignment = TextAnchor.MiddleLeft;
 - [ ] Dropdown 模板：Viewport 的 `pivot = (0, 1)`
 - [ ] Dropdown 模板：ItemLabel 设置 `alignment = TextAnchor.MiddleLeft` + 合理的 offset
 - [ ] 大枚举（KeyCode 等）不使用 Dropdown，改用 InputField 或直接跳过
+- [ ] 需要自定义图标时，使用 Texture2D 像素绘制 + Sprite.Create()，不嵌入外部资源
+- [ ] I18n key 使用空格分词的英文（如 `"Catchable Fish"`），因为英文模式下 key 直接作为显示文本
+- [ ] 包含 I18n 文本的 UI 实现了语言即时切换（检测 `IsChinese()` 变化 → 重建或刷新）
 
 ---
 

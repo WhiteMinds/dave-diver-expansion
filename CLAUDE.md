@@ -87,7 +87,7 @@ bash scripts/update-lib.sh
 ## 配置系统
 
 - 所有配置通过 BepInEx `ConfigFile` 管理，自动生成 `.cfg` 文件
-- 内置 uGUI 配置面板（F1 打开），自动发现所有 `ConfigEntry`
+- 内置 uGUI 配置面板（F1 打开），自动发现所有 `ConfigEntry`，语言切换即时生效
 - Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `Debug`
 - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown（选项文本经 `I18n.T()` 翻译）
 - Section 内条目排序：通过 `ConfigUI.RebuildEntries` 中的 `entryOrder` 字典控制 UI 显示顺序（不依赖 cfg 文件中的 bind 顺序）
@@ -96,9 +96,11 @@ bash scripts/update-lib.sh
 ## 国际化 (i18n)
 
 - `I18n.T("Enabled")` — 中文返回 `"启用"`，英文返回 `"Enabled"`
-- 添加翻译：在 `I18n.cs` 的 `ZhCn` 字典添加 `["EnglishKey"] = "中文值"`
+- 添加翻译：在 `I18n.cs` 的 `ZhCn` 字典添加 `["English Key"] = "中文值"`
+- **英文 key 使用空格分词**（如 `"Catchable Fish"`），因为英文模式下 key 直接作为显示文本
 - enum 值也需翻译（ConfigUI Dropdown 选项经 `I18n.T()` 处理），如 `["TopRight"] = "右上"`
 - 语言检测：ConfigEntry 手动设置 > `SeenChinese` 标记 > `Application.systemLanguage`
+- **语言即时切换**：ConfigUI 和 DiveMap 图例均支持运行时语言切换，通过检测 `I18n.IsChinese()` 变化触发 UI 重建/刷新（详见 [docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md) § 语言即时切换模式）
 
 ## 开发原则
 

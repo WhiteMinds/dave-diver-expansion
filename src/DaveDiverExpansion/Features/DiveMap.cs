@@ -33,6 +33,7 @@ public static class DiveMap
     public static ConfigEntry<float> MiniMapOffsetX;
     public static ConfigEntry<float> MiniMapOffsetY;
     public static ConfigEntry<bool> ShowOres;
+    public static ConfigEntry<float> MarkerScale;
     public static ConfigEntry<bool> DebugLog;
 
     public static void Init(ConfigFile config)
@@ -87,6 +88,10 @@ public static class DiveMap
         ShowChests = config.Bind(
             "DiveMap", "ShowChests", false,
             "Show chest markers on the map");
+        MarkerScale = config.Bind(
+            "DiveMap", "MarkerScale", 1f,
+            new ConfigDescription("Scale multiplier for all map markers",
+                new AcceptableValueRange<float>(0.5f, 3f)));
         DebugLog = config.Bind(
             "Debug", "DebugLog", false,
             "Enable verbose debug logging for DiveMap diagnostics");
@@ -108,6 +113,82 @@ public class DiveMapBehaviour : MonoBehaviour
 {
     public DiveMapBehaviour(System.IntPtr ptr) : base(ptr) { }
 
+    // Marker shape types for visual differentiation
+    private enum MarkerShape { Circle, Diamond, Triangle, Square }
+    private static readonly Dictionary<MarkerShape, Sprite> _shapeSprites = new();
+
+    /// <summary>
+    /// Returns a cached 20×20 white sprite with dark border for the given shape.
+    /// 3 zones: white fill → solid dark border (1.5px) → semi-transparent outer glow (2px fade).
+    /// Color is applied via Image.color (Unity multiplies sprite × color).
+    /// </summary>
+    private static Sprite GetShapeSprite(MarkerShape shape)
+    {
+        if (_shapeSprites.TryGetValue(shape, out var cached)) return cached;
+
+        const int sz = 20;
+        const float center = (sz - 1) / 2f; // 9.5
+        const float shapeR = 7f;             // shape fill radius (inner)
+        var tex = new Texture2D(sz, sz, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+
+        for (int y = 0; y < sz; y++)
+        {
+            for (int x = 0; x < sz; x++)
+            {
+                float dx = x - center;
+                float dy = y - center;
+                // Signed distance to shape edge (negative = inside)
+                float dist;
+                switch (shape)
+                {
+                    case MarkerShape.Circle:
+                        dist = Mathf.Sqrt(dx * dx + dy * dy) - shapeR;
+                        break;
+                    case MarkerShape.Diamond:
+                        dist = (Mathf.Abs(dx) + Mathf.Abs(dy)) - shapeR;
+                        break;
+                    case MarkerShape.Triangle:
+                    {
+                        // Inverted triangle ▼: flat top at y=sz-1, tip at y=0
+                        float normY = (y - (center - shapeR)) / (shapeR * 2f);
+                        normY = Mathf.Clamp01(normY);
+                        float halfW = shapeR * normY;
+                        dist = Mathf.Abs(dx) - halfW;
+                        if (y > center + shapeR) dist = Mathf.Max(dist, y - (center + shapeR));
+                        if (y < center - shapeR) dist = Mathf.Max(dist, (center - shapeR) - y);
+                        break;
+                    }
+                    default: // Square
+                        dist = Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) - shapeR;
+                        break;
+                }
+
+                Color32 pixel;
+                if (dist < -1.5f)
+                    pixel = new Color32(255, 255, 255, 255);       // white fill
+                else if (dist < 0.5f)
+                    pixel = new Color32(20, 20, 20, 240);          // solid dark border
+                else if (dist < 2.5f)
+                {
+                    // Outer glow: fade out alpha
+                    float t = (dist - 0.5f) / 2f;                 // 0..1
+                    byte a = (byte)(160 * (1f - t));
+                    pixel = new Color32(0, 0, 0, a);
+                }
+                else
+                    pixel = new Color32(0, 0, 0, 0);              // transparent
+
+                tex.SetPixel(x, y, pixel);
+            }
+        }
+
+        tex.Apply(false);
+        var sprite = Sprite.Create(tex, new Rect(0, 0, sz, sz), new Vector2(0.5f, 0.5f), sz);
+        _shapeSprites[shape] = sprite;
+        return sprite;
+    }
+
     // Map camera & rendering
     private Camera _mapCamera;
     private RenderTexture _renderTexture;
@@ -118,25 +199,28 @@ public class DiveMapBehaviour : MonoBehaviour
     private RawImage _mapImage;
     private Image _borderImage;
     private RectTransform _markerPanel;
+    private GameObject _legendPanel;  // big map legend (color/shape key)
+    private List<(Text text, string key)> _legendTexts; // cached for language refresh
+    private bool _legendLangChinese = true; // init to opposite of likely default to force first refresh
 
     // Markers (UI image pools)
     private Image _playerMarker;
     private List<Image> _escapeMarkers;
     private List<Image> _entityMarkers;
     private const int MaxEntityMarkers = 1000;
-    private const float MiniMarkerPlayer = 5f;
-    private const float MiniMarkerEscape = 4f;
-    private const float MiniMarkerEntity = 2.5f;
-    private const float BigMarkerPlayer = 8f;
-    private const float BigMarkerEscape = 6f;
-    private const float BigMarkerEntity = 4f;
+    private const float MiniMarkerPlayer = 10f;
+    private const float MiniMarkerEscape = 8f;
+    private const float MiniMarkerEntity = 5f;
+    private const float BigMarkerPlayer = 16f;
+    private const float BigMarkerEscape = 12f;
+    private const float BigMarkerEntity = 8f;
 
     // Cached scan results — separates expensive FindObjectsOfType from cheap position updates
     private bool _escapeScanned;
     private List<Vector3> _escapePosCache;                   // static, scan once
-    private List<(Vector3 pos, Color color)> _staticCache;   // chests + items, rescan periodically
-    private List<(Transform tr, Color color)> _fishCache;    // fish move, update pos every frame
-    private List<(Vector3 pos, Color color)> _oreCache;     // ores are static, rescan periodically
+    private List<(Vector3 pos, Color color, MarkerShape shape)> _staticCache;   // chests + items, rescan periodically
+    private List<(Transform tr, Color color, MarkerShape shape)> _fishCache;    // fish move, update pos every frame
+    private List<(Vector3 pos, Color color, MarkerShape shape)> _oreCache;     // ores are static, rescan periodically
     private int _cachedEntityCount;                          // total markers in use after last scan
 
     // Night light overlay: renderers to hide during map camera rendering
@@ -180,10 +264,11 @@ public class DiveMapBehaviour : MonoBehaviour
         if (_escapeMarkers == null) _escapeMarkers = new List<Image>();
         if (_entityMarkers == null) _entityMarkers = new List<Image>();
         if (_escapePosCache == null) _escapePosCache = new List<Vector3>();
-        if (_staticCache == null) _staticCache = new List<(Vector3, Color)>();
-        if (_fishCache == null) _fishCache = new List<(Transform, Color)>();
-        if (_oreCache == null) _oreCache = new List<(Vector3, Color)>();
+        if (_staticCache == null) _staticCache = new List<(Vector3, Color, MarkerShape)>();
+        if (_fishCache == null) _fishCache = new List<(Transform, Color, MarkerShape)>();
+        if (_oreCache == null) _oreCache = new List<(Vector3, Color, MarkerShape)>();
         if (_nightOverlayRenderers == null) _nightOverlayRenderers = new List<Renderer>();
+        if (_legendTexts == null) _legendTexts = new List<(Text, string)>();
         if (_fishDebugLogged == null) _fishDebugLogged = new HashSet<string>();
     }
 
@@ -608,11 +693,11 @@ public class DiveMapBehaviour : MonoBehaviour
         _markerPanel.offsetMin = new Vector2(2, 2);
         _markerPanel.offsetMax = new Vector2(-2, -2);
 
-        _playerMarker = CreateMarker("Player", Color.white, MiniMarkerPlayer);
+        _playerMarker = CreateMarker("Player", Color.white, MiniMarkerPlayer, MarkerShape.Circle);
 
         for (int i = 0; i < 50; i++)
         {
-            var m = CreateMarker("Escape_" + i, new Color(0.2f, 0.9f, 0.3f), MiniMarkerEscape);
+            var m = CreateMarker("Escape_" + i, new Color(0.2f, 0.9f, 0.3f), MiniMarkerEscape, MarkerShape.Diamond);
             m.gameObject.SetActive(false);
             _escapeMarkers.Add(m);
         }
@@ -623,9 +708,11 @@ public class DiveMapBehaviour : MonoBehaviour
             m.gameObject.SetActive(false);
             _entityMarkers.Add(m);
         }
+
+        CreateLegend(containerGO);
     }
 
-    private Image CreateMarker(string name, Color color, float size)
+    private Image CreateMarker(string name, Color color, float size, MarkerShape shape = MarkerShape.Circle)
     {
         var go = CreateUIObject(name, _markerPanel.gameObject);
         var rt = go.GetComponent<RectTransform>();
@@ -635,6 +722,7 @@ public class DiveMapBehaviour : MonoBehaviour
         rt.pivot = new Vector2(0.5f, 0.5f);
 
         var img = go.AddComponent<Image>();
+        img.sprite = GetShapeSprite(shape);
         img.color = color;
         return img;
     }
@@ -668,6 +756,16 @@ public class DiveMapBehaviour : MonoBehaviour
 
             _mapImage.color = new Color(1, 1, 1, Mathf.Max(opacity, 0.9f));
             _borderImage.color = new Color(0.05f, 0.05f, 0.1f, 0.95f);
+            if (_legendPanel != null)
+            {
+                _legendPanel.SetActive(true);
+                bool isChinese = I18n.IsChinese();
+                if (isChinese != _legendLangChinese)
+                {
+                    _legendLangChinese = isChinese;
+                    RefreshLegendTexts();
+                }
+            }
             if (modeChanged)
             {
                 EnsureTextureSize(TexBigHeight);
@@ -676,6 +774,7 @@ public class DiveMapBehaviour : MonoBehaviour
         }
         else
         {
+            if (_legendPanel != null) _legendPanel.SetActive(false);
             // Hide canvas when minimap is disabled and big map is off
             if (!DiveMap.MiniMapEnabled.Value)
             {
@@ -717,14 +816,16 @@ public class DiveMapBehaviour : MonoBehaviour
 
     private void SetMarkerSizes(float player, float escape, float entity)
     {
+        float s = DiveMap.MarkerScale.Value;
+        float ps = player * s, es = escape * s, ens = entity * s;
         if (_playerMarker != null)
-            _playerMarker.rectTransform.sizeDelta = new Vector2(player, player);
+            _playerMarker.rectTransform.sizeDelta = new Vector2(ps, ps);
         if (_escapeMarkers != null)
             foreach (var m in _escapeMarkers)
-                m.rectTransform.sizeDelta = new Vector2(escape, escape);
+                m.rectTransform.sizeDelta = new Vector2(es, es);
         if (_entityMarkers != null)
             foreach (var m in _entityMarkers)
-                m.rectTransform.sizeDelta = new Vector2(entity, entity);
+                m.rectTransform.sizeDelta = new Vector2(ens, ens);
     }
 
     private void UpdatePlayerMarker()
@@ -734,6 +835,8 @@ public class DiveMapBehaviour : MonoBehaviour
         {
             var player = Singleton<InGameManager>._instance?.playerCharacter;
             if (player == null) return;
+            float ps = (_showBigMap ? BigMarkerPlayer : MiniMarkerPlayer) * DiveMap.MarkerScale.Value;
+            _playerMarker.rectTransform.sizeDelta = new Vector2(ps, ps);
             bool vis = SetMarkerPosition(_playerMarker, player.transform.position);
             _playerMarker.gameObject.SetActive(vis);
         }
@@ -780,7 +883,7 @@ public class DiveMapBehaviour : MonoBehaviour
                     if (!item.gameObject.activeInHierarchy) { itemSkipped++; continue; }
                     var pos = item.transform.position;
                     if (pos == Vector3.zero) continue;
-                    _staticCache.Add((pos, new Color(1f, 0.9f, 0.2f))); // yellow
+                    _staticCache.Add((pos, new Color(1f, 0.9f, 0.2f), MarkerShape.Diamond)); // yellow item
                 }
             }
             catch { }
@@ -808,7 +911,7 @@ public class DiveMapBehaviour : MonoBehaviour
                               : isIngredient ? new Color(0.85f, 0.2f, 0.6f)
                               : new Color(1f, 0.6f, 0.2f);
                     if (debugChest) Plugin.Log.LogInfo($"[DiveMap] chest: {chestName} IsOpen={isOpen} pos={pos}");
-                    _staticCache.Add((pos, color));
+                    _staticCache.Add((pos, color, MarkerShape.Square));
                 }
             }
             catch { }
@@ -844,9 +947,10 @@ public class DiveMapBehaviour : MonoBehaviour
                         : catchable
                             ? new Color(0.4f, 1f, 0.4f)  // green for catchable (shrimp/seahorse)
                             : new Color(0.3f, 0.6f, 1f);  // blue for normal
+                    var fishShape = aggressive ? MarkerShape.Triangle : MarkerShape.Circle;
                     if (debugFish && _fishDebugLogged.Add(fish.gameObject.name))
                         LogFishDebug(fish, aggressive);
-                    _fishCache.Add((fish.transform, color));
+                    _fishCache.Add((fish.transform, color, fishShape));
                 }
             }
             catch { }
@@ -866,7 +970,7 @@ public class DiveMapBehaviour : MonoBehaviour
                     // Skip activeInHierarchy — game deactivates distant ores but positions remain valid
                     var pos = ore.transform.position;
                     if (pos == Vector3.zero) continue;
-                    _oreCache.Add((pos, oreColor));
+                    _oreCache.Add((pos, oreColor, MarkerShape.Diamond));
                 }
             }
             catch { }
@@ -878,7 +982,7 @@ public class DiveMapBehaviour : MonoBehaviour
                     try { if (node.isClear) continue; } catch { continue; }
                     var pos = node.transform.position;
                     if (pos == Vector3.zero) continue;
-                    _oreCache.Add((pos, oreColor));
+                    _oreCache.Add((pos, oreColor, MarkerShape.Diamond));
                 }
             }
             catch { }
@@ -903,12 +1007,14 @@ public class DiveMapBehaviour : MonoBehaviour
         EnsureLists();
 
         // Escape markers — cached positions, never change
+        float escSize = (_showBigMap ? BigMarkerEscape : MiniMarkerEscape) * DiveMap.MarkerScale.Value;
         int escIdx = 0;
         if (DiveMap.ShowEscapePods.Value)
         {
             int escCount = System.Math.Min(_escapeMarkers.Count, _escapePosCache.Count);
             for (int i = 0; i < escCount; i++)
             {
+                _escapeMarkers[i].rectTransform.sizeDelta = new Vector2(escSize, escSize);
                 _escapeMarkers[i].gameObject.SetActive(SetMarkerPosition(_escapeMarkers[i], _escapePosCache[i]));
                 escIdx++;
             }
@@ -919,11 +1025,15 @@ public class DiveMapBehaviour : MonoBehaviour
         _prevEscapeIdx = escIdx;
 
         // Entity markers — static (chests/items) then moving (fish)
+        float scale = DiveMap.MarkerScale.Value;
+        float entitySize = (_showBigMap ? BigMarkerEntity : MiniMarkerEntity) * scale;
         int idx = 0;
         for (int i = 0; i < _staticCache.Count && idx < MaxEntityMarkers; i++, idx++)
         {
             var m = _entityMarkers[idx];
+            m.sprite = GetShapeSprite(_staticCache[i].shape);
             m.color = _staticCache[i].color;
+            m.rectTransform.sizeDelta = new Vector2(entitySize, entitySize);
             m.gameObject.SetActive(SetMarkerPosition(m, _staticCache[i].pos));
         }
         for (int i = 0; i < _fishCache.Count && idx < MaxEntityMarkers; i++)
@@ -933,16 +1043,19 @@ public class DiveMapBehaviour : MonoBehaviour
                 var tr = _fishCache[i].tr;
                 if (tr == null || !tr.gameObject.activeInHierarchy) continue;
                 var m = _entityMarkers[idx++];
+                m.sprite = GetShapeSprite(_fishCache[i].shape);
                 m.color = _fishCache[i].color;
+                m.rectTransform.sizeDelta = new Vector2(entitySize, entitySize);
                 m.gameObject.SetActive(SetMarkerPosition(m, tr.position));
             }
             catch { } // destroyed fish
         }
         // Ores — static, larger markers (1.4x entity size)
-        float oreSize = _showBigMap ? BigMarkerEntity * 1.4f : MiniMarkerEntity * 1.4f;
+        float oreSize = entitySize * 1.4f;
         for (int i = 0; i < _oreCache.Count && idx < MaxEntityMarkers; i++, idx++)
         {
             var m = _entityMarkers[idx];
+            m.sprite = GetShapeSprite(_oreCache[i].shape);
             m.color = _oreCache[i].color;
             m.rectTransform.sizeDelta = new Vector2(oreSize, oreSize);
             m.gameObject.SetActive(SetMarkerPosition(m, _oreCache[i].pos));
@@ -1000,6 +1113,9 @@ public class DiveMapBehaviour : MonoBehaviour
         _borderImage = null;
         _containerRT = null;
         _markerPanel = null;
+        _legendPanel = null;
+        _legendTexts?.Clear();
+        _legendLangChinese = true;
         _playerMarker = null;
         _escapeMarkers.Clear();
         _entityMarkers.Clear();
@@ -1093,6 +1209,102 @@ public class DiveMapBehaviour : MonoBehaviour
         catch (System.Exception e)
         {
             Plugin.Log.LogInfo($"[DiveMap] fish: {fish?.gameObject?.name ?? "?"} debug error: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Creates the legend panel showing marker color/shape meanings.
+    /// Anchored to the right side of the map container, hidden by default (shown only on big map).
+    /// Text references are cached in _legendTexts for dynamic language refresh.
+    /// </summary>
+    private void CreateLegend(GameObject container)
+    {
+        EnsureLists();
+        _legendTexts.Clear();
+
+        _legendPanel = CreateUIObject("Legend", container);
+        var legendRT = _legendPanel.GetComponent<RectTransform>();
+        // Anchor to right edge, vertically centered
+        legendRT.anchorMin = new Vector2(1f, 0.5f);
+        legendRT.anchorMax = new Vector2(1f, 0.5f);
+        legendRT.pivot = new Vector2(0f, 0.5f);
+
+        var legendBg = _legendPanel.AddComponent<Image>();
+        legendBg.color = new Color(0.05f, 0.05f, 0.1f, 0.85f);
+
+        // Legend entries: (i18n key, color, shape)
+        var entries = new (string key, Color color, MarkerShape shape)[]
+        {
+            ("Player",          Color.white,                        MarkerShape.Circle),
+            ("Escape Point",    new Color(0.2f, 0.9f, 0.3f),       MarkerShape.Diamond),
+            ("Aggressive Fish", new Color(1f, 0.3f, 0.2f),         MarkerShape.Triangle),
+            ("Normal Fish",     new Color(0.3f, 0.6f, 1f),         MarkerShape.Circle),
+            ("Catchable Fish",  new Color(0.4f, 1f, 0.4f),         MarkerShape.Circle),
+            ("Item",            new Color(1f, 0.9f, 0.2f),         MarkerShape.Diamond),
+            ("Chest",           new Color(1f, 0.6f, 0.2f),         MarkerShape.Square),
+            ("O2 Chest",        new Color(0.2f, 0.85f, 1f),        MarkerShape.Square),
+            ("Material Chest",  new Color(0.85f, 0.2f, 0.6f),      MarkerShape.Square),
+            ("Ore",             new Color(1f, 0.5f, 0.9f),         MarkerShape.Diamond),
+        };
+
+        const float iconSize = 12f;
+        const float rowH = 18f;
+        const float padX = 8f;
+        const float padY = 6f;
+        const float gap = 4f;
+        const float textW = 80f;
+        float totalH = padY * 2 + entries.Length * rowH;
+        float totalW = padX * 2 + iconSize + gap + textW;
+
+        legendRT.sizeDelta = new Vector2(totalW, totalH);
+        legendRT.anchoredPosition = new Vector2(6f, 0f); // 6px gap from map edge
+
+        for (int i = 0; i < entries.Length; i++)
+        {
+            float yPos = totalH - padY - rowH * (i + 0.5f);
+
+            // Icon
+            var iconGO = CreateUIObject("LIcon_" + i, _legendPanel);
+            var iconRT = iconGO.GetComponent<RectTransform>();
+            iconRT.anchorMin = Vector2.zero;
+            iconRT.anchorMax = Vector2.zero;
+            iconRT.pivot = new Vector2(0.5f, 0.5f);
+            iconRT.sizeDelta = new Vector2(iconSize, iconSize);
+            iconRT.anchoredPosition = new Vector2(padX + iconSize / 2f, yPos);
+            var iconImg = iconGO.AddComponent<Image>();
+            iconImg.sprite = GetShapeSprite(entries[i].shape);
+            iconImg.color = entries[i].color;
+
+            // Label
+            var labelGO = CreateUIObject("LTxt_" + i, _legendPanel);
+            var labelRT = labelGO.GetComponent<RectTransform>();
+            labelRT.anchorMin = Vector2.zero;
+            labelRT.anchorMax = Vector2.zero;
+            labelRT.pivot = new Vector2(0f, 0.5f);
+            labelRT.sizeDelta = new Vector2(textW, rowH);
+            labelRT.anchoredPosition = new Vector2(padX + iconSize + gap, yPos);
+            var text = labelGO.AddComponent<Text>();
+            text.text = I18n.T(entries[i].key);
+            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            text.fontSize = 12;
+            text.color = new Color(0.9f, 0.9f, 0.9f);
+            text.alignment = TextAnchor.MiddleLeft;
+            _legendTexts.Add((text, entries[i].key));
+        }
+
+        _legendPanel.SetActive(false); // hidden by default (shown on big map)
+    }
+
+    /// <summary>
+    /// Refreshes legend text labels from I18n. Called when big map is shown
+    /// so language changes take effect immediately.
+    /// </summary>
+    private void RefreshLegendTexts()
+    {
+        if (_legendTexts == null) return;
+        foreach (var (text, key) in _legendTexts)
+        {
+            if (text != null) text.text = I18n.T(key);
         }
     }
 
