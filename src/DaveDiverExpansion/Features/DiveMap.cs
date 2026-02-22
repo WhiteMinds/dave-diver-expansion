@@ -37,6 +37,7 @@ public static class DiveMap
     public static ConfigEntry<float> MiniMapOffsetY;
     public static ConfigEntry<bool> ShowOres;
     public static ConfigEntry<float> MarkerScale;
+    public static ConfigEntry<bool> ShowDistantFish;
     public static ConfigEntry<bool> DebugLog;
 
     public static void Init(ConfigFile config)
@@ -101,6 +102,9 @@ public static class DiveMap
             "DiveMap", "MarkerScale", 1f,
             new ConfigDescription("Scale multiplier for all map markers",
                 new AcceptableValueRange<float>(0.5f, 3f)));
+        ShowDistantFish = config.Bind(
+            "DiveMap", "ShowDistantFish", true,
+            "Show markers for distant fish that are streamed out by the game (frozen at last known position)");
         DebugLog = config.Bind(
             "Debug", "DebugLog", false,
             "Enable verbose debug logging for DiveMap diagnostics");
@@ -231,7 +235,7 @@ public class DiveMapBehaviour : MonoBehaviour
     private bool _escapeScanned;
     private List<Vector3> _escapePosCache;                   // static, scan once
     private List<(Vector3 pos, Color color, MarkerShape shape)> _staticCache;   // chests + items, rescan periodically
-    private List<(Transform tr, Color color, MarkerShape shape)> _fishCache;    // fish move, update pos every frame
+    private List<(Transform tr, Vector3 lastPos, Color color, MarkerShape shape)> _fishCache;    // fish move, update pos every frame; lastPos for inactive (streamed-out) fish
     private List<(Vector3 pos, Color color, MarkerShape shape)> _oreCache;     // ores are static, rescan periodically
     private int _cachedEntityCount;                          // total markers in use after last scan
 
@@ -286,7 +290,7 @@ public class DiveMapBehaviour : MonoBehaviour
         if (_entityMarkers == null) _entityMarkers = new List<Image>();
         if (_escapePosCache == null) _escapePosCache = new List<Vector3>();
         if (_staticCache == null) _staticCache = new List<(Vector3, Color, MarkerShape)>();
-        if (_fishCache == null) _fishCache = new List<(Transform, Color, MarkerShape)>();
+        if (_fishCache == null) _fishCache = new List<(Transform, Vector3, Color, MarkerShape)>();
         if (_oreCache == null) _oreCache = new List<(Vector3, Color, MarkerShape)>();
         if (_nightOverlayRenderers == null) _nightOverlayRenderers = new List<Renderer>();
         if (_legendTexts == null) _legendTexts = new List<(Text, string)>();
@@ -1204,11 +1208,13 @@ public class DiveMapBehaviour : MonoBehaviour
             try
             {
                 bool debugFish = DiveMap.DebugLog.Value;
+                bool showDistant = DiveMap.ShowDistantFish.Value;
                 foreach (var fish in EntityRegistry.AllFish)
                 {
                     if (fish == null) continue;
-                    if (!fish.gameObject.activeInHierarchy) { fishSkipped++; continue; }
-                    if (fish.transform.position == Vector3.zero) continue;
+                    if (!showDistant && !fish.gameObject.activeInHierarchy) { fishSkipped++; continue; }
+                    var pos = fish.transform.position;
+                    if (pos == Vector3.zero) continue;
                     // Determine aggression via FishAIData.AggressionType
                     // Attack=2 always aggressive; Custom=3 depends on AwayFromTarget
                     int aggrType = GetAggressionType(fish);
@@ -1234,7 +1240,7 @@ public class DiveMapBehaviour : MonoBehaviour
                     var fishShape = aggressive ? MarkerShape.Triangle : MarkerShape.Circle;
                     if (debugFish && _fishDebugLogged.Add(fish.gameObject.name))
                         LogFishDebug(fish, aggressive);
-                    _fishCache.Add((fish.transform, color, fishShape));
+                    _fishCache.Add((fish.transform, pos, color, fishShape));
                 }
             }
             catch { }
@@ -1276,8 +1282,14 @@ public class DiveMapBehaviour : MonoBehaviour
 
         if (DiveMap.DebugLog.Value)
         {
+            int fishInactive = 0;
+            for (int i = 0; i < _fishCache.Count; i++)
+            {
+                try { if (_fishCache[i].tr != null && !_fishCache[i].tr.gameObject.activeInHierarchy) fishInactive++; }
+                catch { }
+            }
             Plugin.Log.LogInfo($"[DiveMap] scan: static={_staticCache.Count}(itemSkip={itemSkipped},chestSkip={chestSkipped})" +
-                $" fish={_fishCache.Count}(skip={fishSkipped}) ores={_oreCache.Count}" +
+                $" fish={_fishCache.Count}(skip={fishSkipped},inactive={fishInactive}) ores={_oreCache.Count}" +
                 $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count},ores={EntityRegistry.AllBreakableOres.Count},mining={EntityRegistry.AllMiningNodes.Count})");
         }
     }
@@ -1321,17 +1333,22 @@ public class DiveMapBehaviour : MonoBehaviour
             m.rectTransform.sizeDelta = new Vector2(entitySize, entitySize);
             m.gameObject.SetActive(SetMarkerPosition(m, _staticCache[i].pos));
         }
+        bool showDistantFish = DiveMap.ShowDistantFish.Value;
         for (int i = 0; i < _fishCache.Count && idx < MaxEntityMarkers; i++)
         {
             try
             {
-                var tr = _fishCache[i].tr;
-                if (tr == null || !tr.gameObject.activeInHierarchy) continue;
+                var entry = _fishCache[i];
+                if (entry.tr == null) continue;
+                bool active = entry.tr.gameObject.activeInHierarchy;
+                if (!showDistantFish && !active) continue;
+                // Active fish: real-time position; inactive (streamed-out): last known position
+                var pos = active ? entry.tr.position : entry.lastPos;
                 var m = _entityMarkers[idx++];
-                m.sprite = GetShapeSprite(_fishCache[i].shape);
-                m.color = _fishCache[i].color;
+                m.sprite = GetShapeSprite(entry.shape);
+                m.color = entry.color;
                 m.rectTransform.sizeDelta = new Vector2(entitySize, entitySize);
-                m.gameObject.SetActive(SetMarkerPosition(m, tr.position));
+                m.gameObject.SetActive(SetMarkerPosition(m, pos));
             }
             catch { } // destroyed fish
         }

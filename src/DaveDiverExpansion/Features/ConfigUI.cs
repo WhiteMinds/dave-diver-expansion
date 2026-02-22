@@ -43,6 +43,13 @@ public static class ConfigUI
     private static float _hoverTimer;
     private const float HoverDelay = 0.3f;
 
+    // Reset button confirmation state
+    private static bool _resetConfirming;
+    private static float _resetConfirmTimer;
+    private static Text _resetBtnText;
+    private static Image _resetBtnImg;
+    private const float ResetConfirmTimeout = 3f;
+
     public static void Init(ConfigFile config)
     {
         _configFile = config;
@@ -92,6 +99,7 @@ public static class ConfigUI
 
             UpdateHoverDesc();
             HandleScrollWheel();
+            TickResetConfirm();
         }
 
         try
@@ -358,7 +366,7 @@ public static class ConfigUI
                 "Enabled", "ToggleKey",
                 "MiniMapEnabled", "MiniMapPosition", "MiniMapOffsetX", "MiniMapOffsetY",
                 "MapSize", "MiniMapZoom", "MapOpacity",
-                "ShowEscapePods", "ShowOres", "ShowFish", "ShowAggressiveFish", "ShowCatchableFish", "ShowItems", "ShowChests"
+                "ShowEscapePods", "ShowOres", "ShowFish", "ShowAggressiveFish", "ShowCatchableFish", "ShowDistantFish", "ShowItems", "ShowChests"
             }
         };
 
@@ -400,6 +408,91 @@ public static class ConfigUI
                 var rowGO = CreateEntryRow(contentRT.gameObject, entry);
                 _sectionObjects.Add(rowGO);
             }
+        }
+
+        // Reset button at the bottom
+        CreateResetButton(contentRT.gameObject);
+    }
+
+    private static void CreateResetButton(GameObject parent)
+    {
+        _resetConfirming = false;
+        _resetConfirmTimer = 0;
+
+        // Spacer
+        var spacerGO = CreateUIObject("ResetSpacer", parent);
+        _sectionObjects.Add(spacerGO);
+        var spacerLE = spacerGO.AddComponent<LayoutElement>();
+        spacerLE.preferredHeight = 8;
+        spacerLE.flexibleHeight = 0;
+
+        // Button row — centered
+        var rowGO = CreateUIObject("ResetRow", parent);
+        _sectionObjects.Add(rowGO);
+        var rowLayout = rowGO.AddComponent<HorizontalLayoutGroup>();
+        rowLayout.childForceExpandWidth = false;
+        rowLayout.childForceExpandHeight = false;
+        rowLayout.childAlignment = TextAnchor.MiddleCenter;
+        var rowLE = rowGO.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = 36;
+        rowLE.flexibleHeight = 0;
+
+        var btnGO = CreateUIObject("ResetBtn", rowGO);
+        _resetBtnImg = btnGO.AddComponent<Image>();
+        _resetBtnImg.color = new Color(0.5f, 0.2f, 0.2f, 0.9f);
+        var btnLE = btnGO.AddComponent<LayoutElement>();
+        btnLE.preferredWidth = 200;
+        btnLE.preferredHeight = 32;
+
+        var txtGO = CreateUIObject("Text", btnGO);
+        var txtRT = txtGO.GetComponent<RectTransform>();
+        txtRT.anchorMin = Vector2.zero;
+        txtRT.anchorMax = Vector2.one;
+        txtRT.sizeDelta = Vector2.zero;
+        _resetBtnText = txtGO.AddComponent<Text>();
+        _resetBtnText.text = I18n.T("Reset All Settings");
+        _resetBtnText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        _resetBtnText.fontSize = 15;
+        _resetBtnText.color = Color.white;
+        _resetBtnText.alignment = TextAnchor.MiddleCenter;
+
+        var btn = btnGO.AddComponent<Button>();
+        btn.targetGraphic = _resetBtnImg;
+        btn.onClick.AddListener((UnityAction)delegate { OnResetClicked(); });
+    }
+
+    private static void OnResetClicked()
+    {
+        if (!_resetConfirming)
+        {
+            _resetConfirming = true;
+            _resetConfirmTimer = ResetConfirmTimeout;
+            if (_resetBtnText != null) _resetBtnText.text = I18n.T("Confirm Reset?");
+            if (_resetBtnImg != null) _resetBtnImg.color = new Color(0.7f, 0.15f, 0.15f, 0.95f);
+            return;
+        }
+
+        // Confirmed — reset all entries to defaults
+        foreach (var kv in _configFile)
+            kv.Value.BoxedValue = kv.Value.DefaultValue;
+
+        _resetConfirming = false;
+        Plugin.Log.LogInfo("ConfigUI: all settings reset to defaults");
+        RebuildEntries();
+    }
+
+    /// <summary>
+    /// Ticks the reset button confirmation timeout. Called from CheckToggle when visible.
+    /// </summary>
+    private static void TickResetConfirm()
+    {
+        if (!_resetConfirming) return;
+        _resetConfirmTimer -= Time.unscaledDeltaTime;
+        if (_resetConfirmTimer <= 0)
+        {
+            _resetConfirming = false;
+            if (_resetBtnText != null) _resetBtnText.text = I18n.T("Reset All Settings");
+            if (_resetBtnImg != null) _resetBtnImg.color = new Color(0.5f, 0.2f, 0.2f, 0.9f);
         }
     }
 

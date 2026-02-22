@@ -54,6 +54,7 @@ public static class I18n
         ["MiniMapOffsetX"] = "小地图水平偏移",
         ["MiniMapOffsetY"] = "小地图垂直偏移",
         ["ShowOres"] = "显示矿石",
+        ["ShowDistantFish"] = "显示远处鱼",
         ["MarkerScale"] = "标记大小",
         // Legend labels
         ["Player"] = "玩家",
@@ -109,7 +110,12 @@ public static class I18n
         ["Show item markers on the map"] = "在地图上显示物品标记",
         ["Show chest markers on the map"] = "在地图上显示宝箱标记",
         ["Scale multiplier for all map markers"] = "所有地图标记的缩放倍率",
+        ["Show markers for distant fish that are streamed out by the game (frozen at last known position)"] = "显示被游戏流式卸载的远处鱼标记（冻结在最后已知位置）",
         ["Enable verbose debug logging for DiveMap diagnostics"] = "启用详细的 DiveMap 调试日志",
+
+        // Reset button
+        ["Reset All Settings"] = "重置所有设置",
+        ["Confirm Reset?"] = "确认重置？",
 
         // KeyCode binding
         ["Press a key..."] = "请按键...",
