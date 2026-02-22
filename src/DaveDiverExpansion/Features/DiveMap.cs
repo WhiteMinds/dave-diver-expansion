@@ -23,6 +23,8 @@ public static class DiveMap
     public static ConfigEntry<KeyCode> ToggleKey;
     public static ConfigEntry<bool> ShowEscapePods;
     public static ConfigEntry<bool> ShowFish;
+    public static ConfigEntry<bool> ShowAggressiveFish;
+    public static ConfigEntry<bool> ShowCatchableFish;
     public static ConfigEntry<bool> ShowItems;
     public static ConfigEntry<bool> ShowChests;
     public static ConfigEntry<float> MapSize;
@@ -81,7 +83,13 @@ public static class DiveMap
             "Show ore/mineral markers on the map");
         ShowFish = config.Bind(
             "DiveMap", "ShowFish", false,
-            "Show fish markers on the map");
+            "Show normal fish markers on the map (non-aggressive, non-catchable)");
+        ShowAggressiveFish = config.Bind(
+            "DiveMap", "ShowAggressiveFish", true,
+            "Show aggressive fish markers on the map (e.g. sharks, piranhas)");
+        ShowCatchableFish = config.Bind(
+            "DiveMap", "ShowCatchableFish", true,
+            "Show catchable fish markers on the map (e.g. shrimp, seahorse)");
         ShowItems = config.Bind(
             "DiveMap", "ShowItems", false,
             "Show item markers on the map");
@@ -208,9 +216,9 @@ public class DiveMapBehaviour : MonoBehaviour
     private List<Image> _escapeMarkers;
     private List<Image> _entityMarkers;
     private const int MaxEntityMarkers = 1000;
-    private const float MiniMarkerPlayer = 10f;
-    private const float MiniMarkerEscape = 8f;
-    private const float MiniMarkerEntity = 5f;
+    private const float MiniMarkerPlayer = 12f;
+    private const float MiniMarkerEscape = 10f;
+    private const float MiniMarkerEntity = 7f;
     private const float BigMarkerPlayer = 16f;
     private const float BigMarkerEscape = 12f;
     private const float BigMarkerEntity = 8f;
@@ -835,7 +843,8 @@ public class DiveMapBehaviour : MonoBehaviour
         {
             var player = Singleton<InGameManager>._instance?.playerCharacter;
             if (player == null) return;
-            float ps = (_showBigMap ? BigMarkerPlayer : MiniMarkerPlayer) * DiveMap.MarkerScale.Value;
+            float zoomScale = _showBigMap ? 1f : DiveMap.MiniMapZoom.Value / 3f;
+            float ps = (_showBigMap ? BigMarkerPlayer : MiniMarkerPlayer) * DiveMap.MarkerScale.Value * zoomScale;
             _playerMarker.rectTransform.sizeDelta = new Vector2(ps, ps);
             bool vis = SetMarkerPosition(_playerMarker, player.transform.position);
             _playerMarker.gameObject.SetActive(vis);
@@ -921,7 +930,10 @@ public class DiveMapBehaviour : MonoBehaviour
         // Moving entities: fish (need position updates every frame)
         _fishCache.Clear();
         int fishSkipped = 0;
-        if (DiveMap.ShowFish.Value)
+        bool showNormalFish = DiveMap.ShowFish.Value;
+        bool showAggrFish = DiveMap.ShowAggressiveFish.Value;
+        bool showCatchFish = DiveMap.ShowCatchableFish.Value;
+        if (showNormalFish || showAggrFish || showCatchFish)
         {
             try
             {
@@ -942,6 +954,12 @@ public class DiveMapBehaviour : MonoBehaviour
                         aggressive = !hasAFT; // fallback
                     // Catchable fish (shrimp, seahorse): Custom + AwayFromTarget
                     bool catchable = aggrType == 3 && hasAFT;
+
+                    // Check per-type config
+                    if (aggressive && !showAggrFish) { fishSkipped++; continue; }
+                    if (catchable && !showCatchFish) { fishSkipped++; continue; }
+                    if (!aggressive && !catchable && !showNormalFish) { fishSkipped++; continue; }
+
                     var color = aggressive
                         ? new Color(1f, 0.3f, 0.2f)   // red for aggressive
                         : catchable
@@ -1007,7 +1025,8 @@ public class DiveMapBehaviour : MonoBehaviour
         EnsureLists();
 
         // Escape markers — cached positions, never change
-        float escSize = (_showBigMap ? BigMarkerEscape : MiniMarkerEscape) * DiveMap.MarkerScale.Value;
+        float zoomScale = _showBigMap ? 1f : DiveMap.MiniMapZoom.Value / 3f;
+        float escSize = (_showBigMap ? BigMarkerEscape : MiniMarkerEscape) * DiveMap.MarkerScale.Value * zoomScale;
         int escIdx = 0;
         if (DiveMap.ShowEscapePods.Value)
         {
@@ -1025,7 +1044,7 @@ public class DiveMapBehaviour : MonoBehaviour
         _prevEscapeIdx = escIdx;
 
         // Entity markers — static (chests/items) then moving (fish)
-        float scale = DiveMap.MarkerScale.Value;
+        float scale = DiveMap.MarkerScale.Value * zoomScale;
         float entitySize = (_showBigMap ? BigMarkerEntity : MiniMarkerEntity) * scale;
         int idx = 0;
         for (int i = 0; i < _staticCache.Count && idx < MaxEntityMarkers; i++, idx++)

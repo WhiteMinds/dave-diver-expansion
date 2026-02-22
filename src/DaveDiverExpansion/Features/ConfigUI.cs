@@ -358,7 +358,7 @@ public static class ConfigUI
                 "Enabled", "ToggleKey",
                 "MiniMapEnabled", "MiniMapPosition", "MiniMapOffsetX", "MiniMapOffsetY",
                 "MapSize", "MiniMapZoom", "MapOpacity",
-                "ShowEscapePods", "ShowOres", "ShowFish", "ShowItems", "ShowChests"
+                "ShowEscapePods", "ShowOres", "ShowFish", "ShowAggressiveFish", "ShowCatchableFish", "ShowItems", "ShowChests"
             }
         };
 

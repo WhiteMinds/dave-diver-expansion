@@ -15,7 +15,9 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
 - **Dive Map** — Minimap HUD and full-level map overlay while diving
   - Minimap in the top-right corner, follows the player with configurable zoom
   - Press M to toggle a full-level enlarged map in the center of the screen
-  - Color-coded markers: escape pods (green), fish (blue), aggressive fish (red), items (yellow), chests (orange), O2 chests (cyan), ingredient pots (purple-red)
+  - Color-coded markers: escape pods (green), normal fish (blue), aggressive fish (red triangle), catchable fish (green circle), items (yellow), chests (orange), O2 chests (cyan), ores (pink), ingredient pots (purple-red)
+  - Independent toggles for normal / aggressive / catchable fish markers
+  - Minimap markers scale with zoom level for consistent visibility
   - Auto-disables in Merfolk Village (which has its own map)
 - **Quick Scene Switch** — Press F2 to open the scene-switch menu from anywhere (no need to walk to the exit)
   - Works in any non-dive scene (Lobby, Sushi Bar, Farm, etc.)
@@ -75,7 +77,9 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 | `Enabled` | `true` | Enable the dive map HUD |
 | `ToggleKey` | `M` | Key to toggle the enlarged map view |
 | `ShowEscapePods` | `true` | Show escape pod/mirror markers |
-| `ShowFish` | `false` | Show fish markers |
+| `ShowFish` | `false` | Show normal fish markers (non-aggressive, non-catchable) |
+| `ShowAggressiveFish` | `true` | Show aggressive fish markers (e.g. sharks, piranhas) |
+| `ShowCatchableFish` | `true` | Show catchable fish markers (e.g. shrimp, seahorse) |
 | `ShowItems` | `false` | Show item markers |
 | `ShowChests` | `false` | Show chest markers |
 | `MapSize` | `0.3` | Minimap size (fraction of screen height) |
