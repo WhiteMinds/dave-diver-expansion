@@ -70,6 +70,13 @@ public static class ConfigUI
 
         try
         {
+            // ESC closes panel if visible
+            if (_isVisible && Input.GetKeyDown(KeyCode.Escape))
+            {
+                Hide();
+                return;
+            }
+
             if (!Input.GetKeyDown(_toggleKey.Value)) return;
         }
         catch
@@ -292,8 +299,36 @@ public static class ConfigUI
                 ordered.Add(kv);
         }
 
+        // Per-section entry ordering (key name → display position)
+        var entryOrder = new Dictionary<string, string[]>
+        {
+            ["DiveMap"] = new[] {
+                "Enabled", "ToggleKey",
+                "MiniMapEnabled", "MiniMapPosition", "MiniMapOffsetX", "MiniMapOffsetY",
+                "MapSize", "MiniMapZoom", "MapOpacity",
+                "ShowEscapePods", "ShowOres", "ShowFish", "ShowItems", "ShowChests"
+            }
+        };
+
         foreach (var section in ordered)
         {
+            var entries = section.Value;
+            if (entryOrder.TryGetValue(section.Key, out var keyOrder))
+            {
+                var orderMap = new Dictionary<string, int>();
+                for (int i = 0; i < keyOrder.Length; i++)
+                    orderMap[keyOrder[i]] = i;
+                entries.Sort((a, b) =>
+                {
+                    bool aHas = orderMap.TryGetValue(a.Definition.Key, out int aIdx);
+                    bool bHas = orderMap.TryGetValue(b.Definition.Key, out int bIdx);
+                    if (aHas && bHas) return aIdx.CompareTo(bIdx);
+                    if (aHas) return -1;
+                    if (bHas) return 1;
+                    return 0;
+                });
+            }
+
             // Section header
             var sectionGO = CreateUIObject("Section_" + section.Key, contentRT.gameObject);
             _sectionObjects.Add(sectionGO);
@@ -308,7 +343,7 @@ public static class ConfigUI
             sectionText.color = new Color(0.6f, 0.75f, 1f);
             sectionText.alignment = TextAnchor.MiddleLeft;
 
-            foreach (var entry in section.Value)
+            foreach (var entry in entries)
             {
                 var rowGO = CreateEntryRow(contentRT.gameObject, entry);
                 _sectionObjects.Add(rowGO);
@@ -677,7 +712,7 @@ public static class ConfigUI
         var enumNames = Enum.GetNames(entry.SettingType);
         dropdown.options = new Il2CppSystem.Collections.Generic.List<Dropdown.OptionData>();
         foreach (var name in enumNames)
-            dropdown.options.Add(new Dropdown.OptionData(name));
+            dropdown.options.Add(new Dropdown.OptionData(I18n.T(name)));
 
         var currentVal = entry.BoxedValue.ToString();
         dropdown.value = Array.IndexOf(enumNames, currentVal);

@@ -43,7 +43,7 @@ bash scripts/update-lib.sh
     ├── Features/
     │   ├── AutoPickup.cs          # 自动拾取（读取 EntityRegistry）
     │   ├── ConfigUI.cs            # uGUI 配置面板 (F1)
-    │   ├── DiveMap.cs             # 潜水地图 HUD (M 键)
+    │   ├── DiveMap.cs             # 潜水地图 HUD (M 键大地图, 小地图可配置位置)
     │   └── QuickSceneSwitch.cs    # 快速场景切换 (F2)
     └── Helpers/
         ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期补丁
@@ -53,7 +53,7 @@ bash scripts/update-lib.sh
 
 - `Plugin.cs` — 入口点，`Load()` 中初始化各功能并调用 `_harmony.PatchAll()`
 - `Features/` — 每个功能独立为一个文件，含 `Init(ConfigFile)` + `[HarmonyPatch]` 类
-- `Helpers/EntityRegistry` — Harmony 生命周期补丁维护 `AllFish`/`AllItems`/`AllChests` HashSet，供 AutoPickup 和 DiveMap 共享读取。每 2s 通过 `Purge()` 清理已销毁对象
+- `Helpers/EntityRegistry` — Harmony 生命周期补丁维护 `AllFish`/`AllItems`/`AllChests`/`AllBreakableOres`/`AllMiningNodes` HashSet，供 AutoPickup 和 DiveMap 共享读取。每 2s 通过 `Purge()` 清理已销毁对象
 
 ## 文档索引
 
@@ -82,19 +82,22 @@ bash scripts/update-lib.sh
 - `Object.FindObjectsOfType<T>()` 可用于扫描场景游戏对象
 - **`Singleton<T>.Instance` 会自动创建实例** — 安全检测用 `Singleton<T>._instance`
 - **Sirenix 依赖问题**：部分类型（如 `SABaseFishSystem`）不能直接 `GetComponent<T>()`，需通过 `IL2CPP.GetIl2CppClass()` + `Marshal.ReadIntPtr` 低级 API 访问（详见 [docs/game-classes.md](docs/game-classes.md) § 鱼攻击性检测）
+- **⛔ 不要 Harmony patch 继承链中的 virtual 方法**（如 `OnDie`）——IL2CPP trampoline 会在基类/兄弟类调用时崩溃，null guard 无效。用 `OnEnable`/`Awake` 注册 + `Purge()` 清理代替（详见 [docs/game-internals.md](docs/game-internals.md) § Harmony + IL2CPP Virtual 方法陷阱）
 
 ## 配置系统
 
 - 所有配置通过 BepInEx `ConfigFile` 管理，自动生成 `.cfg` 文件
 - 内置 uGUI 配置面板（F1 打开），自动发现所有 `ConfigEntry`
 - Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `Debug`
-- 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown
+- 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown（选项文本经 `I18n.T()` 翻译）
+- Section 内条目排序：通过 `ConfigUI.RebuildEntries` 中的 `entryOrder` 字典控制 UI 显示顺序（不依赖 cfg 文件中的 bind 顺序）
 - uGUI 开发踩坑记录：[docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md)
 
 ## 国际化 (i18n)
 
 - `I18n.T("Enabled")` — 中文返回 `"启用"`，英文返回 `"Enabled"`
 - 添加翻译：在 `I18n.cs` 的 `ZhCn` 字典添加 `["EnglishKey"] = "中文值"`
+- enum 值也需翻译（ConfigUI Dropdown 选项经 `I18n.T()` 处理），如 `["TopRight"] = "右上"`
 - 语言检测：ConfigEntry 手动设置 > `SeenChinese` 标记 > `Application.systemLanguage`
 
 ## 开发原则

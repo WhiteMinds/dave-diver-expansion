@@ -13,6 +13,8 @@ public static class EntityRegistry
     public static readonly HashSet<FishInteractionBody> AllFish = new();
     public static readonly HashSet<PickupInstanceItem> AllItems = new();
     public static readonly HashSet<InstanceItemChest> AllChests = new();
+    public static readonly HashSet<BreakableLootObject> AllBreakableOres = new();
+    public static readonly HashSet<InteractionGimmick_Mining> AllMiningNodes = new();
 
     // Periodic null purge for sets without OnDisable cleanup
     private const float PurgeInterval = 2f;
@@ -34,13 +36,15 @@ public static class EntityRegistry
         int chestBefore = AllChests.Count;
         AllFish.RemoveWhere(f => f == null);
         AllChests.RemoveWhere(c => c == null);
+        AllBreakableOres.RemoveWhere(o => o == null);
+        AllMiningNodes.RemoveWhere(m => m == null);
 
         if (IsDebug)
         {
             int fishRemoved = fishBefore - AllFish.Count;
             int chestRemoved = chestBefore - AllChests.Count;
             if (fishRemoved > 0 || chestRemoved > 0)
-                Plugin.Log.LogInfo($"[EntityRegistry] Purge: fish={fishRemoved} chest={chestRemoved} removed (remaining: fish={AllFish.Count} item={AllItems.Count} chest={AllChests.Count})");
+                Plugin.Log.LogInfo($"[EntityRegistry] Purge: fish={fishRemoved} chest={chestRemoved} removed (remaining: fish={AllFish.Count} item={AllItems.Count} chest={AllChests.Count} ores={AllBreakableOres.Count} mining={AllMiningNodes.Count})");
         }
     }
 }
@@ -101,6 +105,48 @@ static class FishAwakePatch
             Plugin.Log.LogInfo($"[EntityRegistry] Fish+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllFish.Count})");
     }
 }
+
+[HarmonyPatch(typeof(BreakableLootObject), nameof(BreakableLootObject.OnEnable))]
+static class BreakableLootOnEnablePatch
+{
+    static void Postfix(BreakableLootObject __instance)
+    {
+        if (__instance == null) return;
+        // Only register ore types (Pile=6, SeaWeed=7 are not ores)
+        try
+        {
+            var t = __instance.lootObjectType;
+            if (t == BreakableLootObject.BreakableLootObjectType.Pile
+                || t == BreakableLootObject.BreakableLootObjectType.SeaWeed)
+                return;
+        }
+        catch { return; }
+        EntityRegistry.AllBreakableOres.Add(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(BreakableLootObject), nameof(BreakableLootObject.OnDie))]
+static class BreakableLootOnDiePatch
+{
+    static void Postfix(BreakableLootObject __instance)
+    {
+        if (__instance == null) return;
+        EntityRegistry.AllBreakableOres.Remove(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(InteractionGimmick_Mining), nameof(InteractionGimmick_Mining.Awake))]
+static class MiningNodeAwakePatch
+{
+    static void Postfix(InteractionGimmick_Mining __instance)
+    {
+        if (__instance == null) return;
+        EntityRegistry.AllMiningNodes.Add(__instance);
+    }
+}
+
+// No OnDie patch — it's virtual and the IL2CPP trampoline crashes when called
+// from base/sibling classes. Purge() handles cleanup via null/isClear checks.
 
 [HarmonyPatch(typeof(PlayerCharacter), nameof(PlayerCharacter.Update))]
 static class EntityRegistryPurgePatch

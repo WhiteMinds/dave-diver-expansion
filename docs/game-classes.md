@@ -102,6 +102,34 @@ var aggrFieldPtr = IL2CPP.GetIl2CppField(dataClassPtr, "AggressionType");
 
 > 所有交互类使用 `OnTriggerEnter2D` 检测玩家碰撞，`SuccessInteract` 触发实际拾取。
 
+## 矿物 & 采矿类
+
+| 类名 | 作用 | 关键方法/字段 |
+|------|------|---------------|
+| `BreakableLootObject` : `MonoBehaviour` | 可破坏的掉落物（矿石、碎石堆、海藻） | `OnEnable()`, `OnDie()` (virtual), `IsDead()` (virtual, bool), `lootObjectType` (BreakableLootObjectType) |
+| `InteractionGimmick_Mining` : `InteractionGimmick` | 采矿交互节点（钻头矿点） | `Awake()` (override), `OnDie()` (virtual), `isClear` (bool) |
+
+### BreakableLootObjectType 枚举
+
+```
+Ore_Opal=0, Ore_Lead=1, Ore_Copper=2, Ore_Iron=3, Ore_Diamond=4, Ore_Amethyst=5, Pile=6, SeaWeed=7
+```
+
+- 0-5 为矿石类型，6-7 为非矿石（碎石堆、海藻）
+- 注册矿物时需过滤 `Pile` 和 `SeaWeed`
+
+### 矿物对象生命周期与 Harmony 补丁
+
+**关键发现**：游戏对远处矿物执行 `SetActive(false)`，但 `transform.position` 仍然有效（矿物是静态的，不会移动）。因此在地图标记等场景中，不应用 `activeInHierarchy` 过滤矿物。
+
+**Harmony 补丁注意事项**：
+
+- ✅ `BreakableLootObject.OnEnable` — 可安全 patch（注册矿物）
+- ✅ `BreakableLootObject.OnDie` — 可安全 patch（移除矿物）
+- ✅ `InteractionGimmick_Mining.Awake` — 可安全 patch（注册矿点）
+- ⛔ `InteractionGimmick_Mining.OnDie` — **不能 patch**！这是 virtual 方法，IL2CPP trampoline 在被基类/兄弟类调用时会 NRE 崩溃（`__instance` 转型失败），即使加 null guard 也无效（crash 发生在 Postfix 之前的 trampoline 代码中）
+- 清理策略：依赖 `EntityRegistry.Purge()` 的周期性 `RemoveWhere(null)` + 扫描时的 `isClear` 过滤
+
 ## 玩家状态锁定系统
 
 游戏通过多层锁定机制控制玩家操作：

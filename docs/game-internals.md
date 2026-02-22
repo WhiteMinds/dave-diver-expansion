@@ -354,6 +354,33 @@ if (subBoundsCol != null)
 
 **注意**：不要尝试用逃生点坐标动态扩展边界 — 逃生点可能在距关卡很远的位置（如 1000+ 单位外），会导致地图比例严重失真。
 
+### Harmony + IL2CPP Virtual 方法陷阱
+
+**⛔ 不要 patch 继承链中的 virtual 方法（如 `OnDie`），除非该类是最终类。**
+
+原因：Harmony 在 IL2CPP 上 patch virtual 方法时，会替换原生方法指针。当基类或兄弟子类调用该 virtual 方法时，IL2CPP trampoline 尝试将 `IntPtr` 参数转换为 patch 目标类型会产生 `NullReferenceException`——这发生在 Postfix/Prefix 代码之前，**null guard 无效**。
+
+```
+// 错误示例：InteractionGimmick_Mining.OnDie 是 virtual，
+// InteractionGimmick 的其他子类也会调用 OnDie，触发 trampoline 崩溃
+[HarmonyPatch(typeof(InteractionGimmick_Mining), nameof(InteractionGimmick_Mining.OnDie))]  // ⛔ 会崩溃
+```
+
+**安全替代方案**：
+- 用非 virtual 的生命周期方法（`OnEnable`, `Awake`）做注册
+- 用 `Purge()` 周期性清理代替精确的注销补丁
+- 用业务逻辑过滤（如 `IsDead()`, `isClear`）代替注销
+
+**已知安全的 patch 目标**：`OnEnable`（MonoBehaviour 原生回调，非 virtual dispatch）、`Awake`（同上）、`SuccessInteract`（具体业务方法）。
+
+### 游戏对象激活距离（Object Streaming）
+
+游戏对远处的场景对象执行 `SetActive(false)`，只在玩家附近时激活。这意味着：
+- `activeInHierarchy` 不能用于过滤 **静态** 对象（矿物、固定物品等）——远处的有效对象也是 inactive
+- inactive 对象的 `transform.position` 仍然有效（位置不变）
+- 对于移动实体（鱼）仍应检查 `activeInHierarchy`，因为 inactive 鱼的位置可能过时
+- `OnEnable` 在对象首次进入激活范围时触发，可用于注册；但对象再次变为 inactive 时不会从注册表移除，需靠 `Purge()` 或业务过滤（`IsDead()`）处理
+
 ### IL2CPP 命名空间陷阱
 
 运行时组件名不一定与 interop DLL 中的完全限定名匹配。例如：

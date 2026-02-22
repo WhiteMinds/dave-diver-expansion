@@ -10,6 +10,8 @@ using UnityEngine.UI;
 
 namespace DaveDiverExpansion.Features;
 
+public enum MiniMapCorner { TopRight, TopLeft, BottomRight, BottomLeft }
+
 /// <summary>
 /// Dive map HUD that renders a top-down overview of the current level.
 /// Minimap (top-right) follows the player with configurable zoom;
@@ -26,19 +28,56 @@ public static class DiveMap
     public static ConfigEntry<float> MapSize;
     public static ConfigEntry<float> MapOpacity;
     public static ConfigEntry<float> MiniMapZoom;
+    public static ConfigEntry<bool> MiniMapEnabled;
+    public static ConfigEntry<MiniMapCorner> MiniMapPosition;
+    public static ConfigEntry<float> MiniMapOffsetX;
+    public static ConfigEntry<float> MiniMapOffsetY;
+    public static ConfigEntry<bool> ShowOres;
     public static ConfigEntry<bool> DebugLog;
 
     public static void Init(ConfigFile config)
     {
+        // General
         Enabled = config.Bind(
             "DiveMap", "Enabled", true,
             "Enable the dive map HUD");
         ToggleKey = config.Bind(
             "DiveMap", "ToggleKey", KeyCode.M,
             "Key to toggle the enlarged map view");
+        // Minimap appearance
+        MiniMapEnabled = config.Bind(
+            "DiveMap", "MiniMapEnabled", true,
+            "Show the minimap overlay during diving");
+        MiniMapPosition = config.Bind(
+            "DiveMap", "MiniMapPosition", MiniMapCorner.TopRight,
+            "Screen corner for the minimap");
+        MiniMapOffsetX = config.Bind(
+            "DiveMap", "MiniMapOffsetX", 16f,
+            new ConfigDescription("Minimap horizontal offset from screen edge",
+                new AcceptableValueRange<float>(0f, 500f)));
+        MiniMapOffsetY = config.Bind(
+            "DiveMap", "MiniMapOffsetY", 16f,
+            new ConfigDescription("Minimap vertical offset from screen edge",
+                new AcceptableValueRange<float>(0f, 500f)));
+        MapSize = config.Bind(
+            "DiveMap", "MapSize", 0.3f,
+            new ConfigDescription("Minimap size as fraction of screen height",
+                new AcceptableValueRange<float>(0.15f, 0.5f)));
+        MiniMapZoom = config.Bind(
+            "DiveMap", "MiniMapZoom", 3f,
+            new ConfigDescription("Minimap zoom level (higher = more zoomed in)",
+                new AcceptableValueRange<float>(1f, 10f)));
+        MapOpacity = config.Bind(
+            "DiveMap", "MapOpacity", 0.8f,
+            new ConfigDescription("Minimap opacity",
+                new AcceptableValueRange<float>(0.3f, 1.0f)));
+        // Markers
         ShowEscapePods = config.Bind(
             "DiveMap", "ShowEscapePods", true,
             "Show escape pod/mirror markers on the map");
+        ShowOres = config.Bind(
+            "DiveMap", "ShowOres", true,
+            "Show ore/mineral markers on the map");
         ShowFish = config.Bind(
             "DiveMap", "ShowFish", false,
             "Show fish markers on the map");
@@ -48,18 +87,6 @@ public static class DiveMap
         ShowChests = config.Bind(
             "DiveMap", "ShowChests", false,
             "Show chest markers on the map");
-        MapSize = config.Bind(
-            "DiveMap", "MapSize", 0.3f,
-            new ConfigDescription("Minimap size as fraction of screen height",
-                new AcceptableValueRange<float>(0.15f, 0.5f)));
-        MapOpacity = config.Bind(
-            "DiveMap", "MapOpacity", 0.8f,
-            new ConfigDescription("Map opacity",
-                new AcceptableValueRange<float>(0.3f, 1.0f)));
-        MiniMapZoom = config.Bind(
-            "DiveMap", "MiniMapZoom", 3f,
-            new ConfigDescription("Minimap zoom level (higher = more zoomed in)",
-                new AcceptableValueRange<float>(1f, 10f)));
         DebugLog = config.Bind(
             "Debug", "DebugLog", false,
             "Enable verbose debug logging for DiveMap diagnostics");
@@ -109,6 +136,7 @@ public class DiveMapBehaviour : MonoBehaviour
     private List<Vector3> _escapePosCache;                   // static, scan once
     private List<(Vector3 pos, Color color)> _staticCache;   // chests + items, rescan periodically
     private List<(Transform tr, Color color)> _fishCache;    // fish move, update pos every frame
+    private List<(Vector3 pos, Color color)> _oreCache;     // ores are static, rescan periodically
     private int _cachedEntityCount;                          // total markers in use after last scan
 
     // Night light overlay: renderers to hide during map camera rendering
@@ -135,7 +163,9 @@ public class DiveMapBehaviour : MonoBehaviour
     private bool _chestDebugDone;  // log chest details only once per scene
     private const float MinScanInterval = 1.0f;
     private const int RenderEveryNFrames = 3;  // map camera renders once per N frames (~20 FPS at 60)
-    private const int TexBaseHeight = 256;     // RenderTexture height (was 512)
+    private const int TexBaseHeight = 256;     // RenderTexture height for minimap
+    private const int TexBigHeight = 1024;     // RenderTexture height for big map
+    private int _currentTexSize;               // current RenderTexture dimension
     private const float BaseMiniMapOrtho = 45f; // fixed minimap half-height in world units (visible height = 90u)
 
     // IL2CPP low-level pointers for reading FishAggressionType without Sirenix reference
@@ -152,6 +182,7 @@ public class DiveMapBehaviour : MonoBehaviour
         if (_escapePosCache == null) _escapePosCache = new List<Vector3>();
         if (_staticCache == null) _staticCache = new List<(Vector3, Color)>();
         if (_fishCache == null) _fishCache = new List<(Transform, Color)>();
+        if (_oreCache == null) _oreCache = new List<(Vector3, Color)>();
         if (_nightOverlayRenderers == null) _nightOverlayRenderers = new List<Renderer>();
         if (_fishDebugLogged == null) _fishDebugLogged = new HashSet<string>();
     }
@@ -171,6 +202,13 @@ public class DiveMapBehaviour : MonoBehaviour
             bool toggled = false;
             try { toggled = Input.GetKeyDown(DiveMap.ToggleKey.Value); }
             catch { return; }
+
+            // ESC closes big map (before pause menu check so both can fire)
+            if (Input.GetKeyDown(KeyCode.Escape) && _showBigMap)
+            {
+                _showBigMap = false;
+                Plugin.Log.LogInfo("DiveMap: big map closed via ESC");
+            }
 
             // Check dive scene (use _instance to avoid auto-creation)
             bool inGame = false;
@@ -225,6 +263,15 @@ public class DiveMapBehaviour : MonoBehaviour
                 return;
             }
 
+            // Hide map during cutscenes / scripted actions
+            var player = Singleton<InGameManager>._instance?.playerCharacter;
+            if (player != null && (player.IsScenarioPlaying || player.IsActionLock))
+            {
+                if (_showBigMap) _showBigMap = false;
+                _canvasGO?.SetActive(false);
+                return;
+            }
+
             if (toggled)
             {
                 _showBigMap = !_showBigMap;
@@ -253,9 +300,10 @@ public class DiveMapBehaviour : MonoBehaviour
                 ScanEntities();
             }
 
-            // Manual render: disable overlay renderers, render, re-enable
+            // Manual render: big map every frame, minimap every N frames
             _renderSkipCount++;
-            if (_renderSkipCount >= RenderEveryNFrames && _mapCamera != null)
+            int renderInterval = _showBigMap ? 1 : RenderEveryNFrames;
+            if (_renderSkipCount >= renderInterval && _mapCamera != null)
             {
                 _renderSkipCount = 0;
                 RenderMapCamera();
@@ -415,6 +463,7 @@ public class DiveMapBehaviour : MonoBehaviour
         // Square RenderTexture — camera renders 1:1 area, minimap is always square,
         // big map uses uvRect to crop to level aspect
         int texSize = TexBaseHeight;
+        _currentTexSize = texSize;
 
         _renderTexture = new RenderTexture(texSize, texSize, 24);
         _renderTexture.useMipMap = false;
@@ -443,6 +492,30 @@ public class DiveMapBehaviour : MonoBehaviour
 
         CreateHUD();
         Plugin.Log.LogInfo($"DiveMap: created, bounds=({_boundsMin})-({_boundsMax}), aspect={_levelAspect:F2}, tex={texSize}x{texSize}");
+    }
+
+    /// <summary>
+    /// Recreates the RenderTexture at a new size and rebinds camera + RawImage.
+    /// </summary>
+    private void EnsureTextureSize(int size)
+    {
+        if (size == _currentTexSize || _mapCamera == null) return;
+
+        if (_renderTexture != null)
+        {
+            _mapCamera.targetTexture = null;
+            _renderTexture.Release();
+            Object.Destroy(_renderTexture);
+        }
+
+        _currentTexSize = size;
+        _renderTexture = new RenderTexture(size, size, 24);
+        _renderTexture.useMipMap = false;
+        _renderTexture.filterMode = FilterMode.Bilinear;
+        _mapCamera.targetTexture = _renderTexture;
+        if (_mapImage != null) _mapImage.texture = _renderTexture;
+
+        Plugin.Log.LogInfo($"DiveMap: texture resized to {size}x{size}");
     }
 
     /// <summary>
@@ -595,24 +668,50 @@ public class DiveMapBehaviour : MonoBehaviour
 
             _mapImage.color = new Color(1, 1, 1, Mathf.Max(opacity, 0.9f));
             _borderImage.color = new Color(0.05f, 0.05f, 0.1f, 0.95f);
-            if (modeChanged) SetMarkerSizes(BigMarkerPlayer, BigMarkerEscape, BigMarkerEntity);
+            if (modeChanged)
+            {
+                EnsureTextureSize(TexBigHeight);
+                SetMarkerSizes(BigMarkerPlayer, BigMarkerEscape, BigMarkerEntity);
+            }
         }
         else
         {
-            _containerRT.anchorMin = new Vector2(1, 1);
-            _containerRT.anchorMax = new Vector2(1, 1);
-            _containerRT.pivot = new Vector2(1, 1);
+            // Hide canvas when minimap is disabled and big map is off
+            if (!DiveMap.MiniMapEnabled.Value)
+            {
+                if (_canvasGO != null) _canvasGO.SetActive(false);
+                return;
+            }
 
-            // Fixed 1:1 square minimap — texture is already square, show full
+            // Position minimap in the configured corner
+            float ax, ay;
+            switch (DiveMap.MiniMapPosition.Value)
+            {
+                case MiniMapCorner.TopLeft:     ax = 0; ay = 1; break;
+                case MiniMapCorner.BottomRight: ax = 1; ay = 0; break;
+                case MiniMapCorner.BottomLeft:  ax = 0; ay = 0; break;
+                default:                        ax = 1; ay = 1; break; // TopRight
+            }
+            _containerRT.anchorMin = new Vector2(ax, ay);
+            _containerRT.anchorMax = new Vector2(ax, ay);
+            _containerRT.pivot = new Vector2(ax, ay);
+
             float mapH = 1080f * DiveMap.MapSize.Value;
             _containerRT.sizeDelta = new Vector2(mapH, mapH);
-            _containerRT.anchoredPosition = new Vector2(-16, -16);
+
+            float ox = DiveMap.MiniMapOffsetX.Value * (ax >= 0.5f ? -1 : 1);
+            float oy = DiveMap.MiniMapOffsetY.Value * (ay >= 0.5f ? -1 : 1);
+            _containerRT.anchoredPosition = new Vector2(ox, oy);
 
             _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
 
             _mapImage.color = new Color(1, 1, 1, opacity);
             _borderImage.color = new Color(0.1f, 0.1f, 0.15f, 0.9f);
-            if (modeChanged) SetMarkerSizes(MiniMarkerPlayer, MiniMarkerEscape, MiniMarkerEntity);
+            if (modeChanged)
+            {
+                EnsureTextureSize(TexBaseHeight);
+                SetMarkerSizes(MiniMarkerPlayer, MiniMarkerEscape, MiniMarkerEntity);
+            }
         }
     }
 
@@ -753,13 +852,45 @@ public class DiveMapBehaviour : MonoBehaviour
             catch { }
         }
 
-        _cachedEntityCount = _staticCache.Count + _fishCache.Count;
+        // Ores / mining nodes
+        _oreCache.Clear();
+        if (DiveMap.ShowOres.Value)
+        {
+            var oreColor = new Color(1f, 0.5f, 0.9f); // pink/magenta
+            try
+            {
+                foreach (var ore in EntityRegistry.AllBreakableOres)
+                {
+                    if (ore == null) continue;
+                    try { if (ore.IsDead()) continue; } catch { continue; }
+                    // Skip activeInHierarchy — game deactivates distant ores but positions remain valid
+                    var pos = ore.transform.position;
+                    if (pos == Vector3.zero) continue;
+                    _oreCache.Add((pos, oreColor));
+                }
+            }
+            catch { }
+            try
+            {
+                foreach (var node in EntityRegistry.AllMiningNodes)
+                {
+                    if (node == null) continue;
+                    try { if (node.isClear) continue; } catch { continue; }
+                    var pos = node.transform.position;
+                    if (pos == Vector3.zero) continue;
+                    _oreCache.Add((pos, oreColor));
+                }
+            }
+            catch { }
+        }
+
+        _cachedEntityCount = _staticCache.Count + _fishCache.Count + _oreCache.Count;
 
         if (DiveMap.DebugLog.Value)
         {
             Plugin.Log.LogInfo($"[DiveMap] scan: static={_staticCache.Count}(itemSkip={itemSkipped},chestSkip={chestSkipped})" +
-                $" fish={_fishCache.Count}(skip={fishSkipped})" +
-                $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count})");
+                $" fish={_fishCache.Count}(skip={fishSkipped}) ores={_oreCache.Count}" +
+                $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count},ores={EntityRegistry.AllBreakableOres.Count},mining={EntityRegistry.AllMiningNodes.Count})");
         }
     }
 
@@ -806,6 +937,15 @@ public class DiveMapBehaviour : MonoBehaviour
                 m.gameObject.SetActive(SetMarkerPosition(m, tr.position));
             }
             catch { } // destroyed fish
+        }
+        // Ores — static, larger markers (1.4x entity size)
+        float oreSize = _showBigMap ? BigMarkerEntity * 1.4f : MiniMarkerEntity * 1.4f;
+        for (int i = 0; i < _oreCache.Count && idx < MaxEntityMarkers; i++, idx++)
+        {
+            var m = _entityMarkers[idx];
+            m.color = _oreCache[i].color;
+            m.rectTransform.sizeDelta = new Vector2(oreSize, oreSize);
+            m.gameObject.SetActive(SetMarkerPosition(m, _oreCache[i].pos));
         }
         // Only hide markers that were active last frame but aren't now
         for (int i = idx; i < _prevEntityIdx; i++)
@@ -866,6 +1006,7 @@ public class DiveMapBehaviour : MonoBehaviour
         _escapePosCache.Clear();
         _staticCache.Clear();
         _fishCache.Clear();
+        _oreCache.Clear();
         _nightOverlayRenderers.Clear();
         _escapeScanned = false;
         _nightOverlayScanned = false;
@@ -874,6 +1015,7 @@ public class DiveMapBehaviour : MonoBehaviour
         _cachedEntityCount = 0;
         _showBigMap = false;
         _lastBigMap = false;
+        _currentTexSize = 0;
         _scanTimer = 0f;
         _prevEscapeIdx = 0;
         _prevEntityIdx = 0;
