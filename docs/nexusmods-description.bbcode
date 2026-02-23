@@ -108,6 +108,12 @@ You can also edit the config file directly:
 
 [size=3][b]Changelog[/b][/size]
 
+[b]v1.2.1[/b]
+[list]
+[*]DiveMap: Fixed catchable fish (shrimp, seahorse, etc.) incorrectly hidden from the map — they were wrongly classified as dead because FishInteractionType is a static prefab config, not a runtime death state
+[*]DiveMap: Fixed dead fish ghost marker detection — replaced FishInteractionType-based filter with IsEnableInteraction check (the actual fish death/collect path), so only truly dead fish are hidden
+[/list]
+
 [b]v1.2.0[/b]
 [list]
 [*]DiveMap: Filter dead fish markers — fish in Carving (killed) or Pickup (awaiting collection) state no longer show on the map
