@@ -27,6 +27,7 @@ public static class AutoPickup
     private static float _unlockTime;
     private const float UnlockCooldown = 1f;
 
+
     public static void Init(BepInEx.Configuration.ConfigFile config)
     {
         Enabled = config.Bind(
@@ -123,6 +124,15 @@ public static class AutoPickup
                 var goName = item.gameObject.name;
                 if (goName.StartsWith("PickupInstance") || goName.Contains("HarpoonHead"))
                     continue;
+
+                // Skip ammo boxes when current gun ammo is full (avoids rapid failed pickup loop)
+                if (goName.Contains("BulletBox"))
+                {
+                    var inventory = player.CurrentInstanceItemInventory;
+                    var gun = inventory?.gunHandler;
+                    if (gun != null && gun.IsBulletFull())
+                        continue;
+                }
 
                 // Skip sea urchins when player lacks sufficient grab level (no gloves)
                 var seaUrchin = item.TryCast<PickupInstanceItem_SeaUrchin>();

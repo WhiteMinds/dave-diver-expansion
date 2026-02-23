@@ -103,7 +103,7 @@ public static class DiveMap
             new ConfigDescription("Scale multiplier for all map markers",
                 new AcceptableValueRange<float>(0.5f, 3f)));
         ShowDistantFish = config.Bind(
-            "DiveMap", "ShowDistantFish", true,
+            "DiveMap", "ShowDistantFish", false,
             "Show markers for distant fish that are streamed out by the game (frozen at last known position)");
         DebugLog = config.Bind(
             "Debug", "DebugLog", false,
@@ -1212,6 +1212,15 @@ public class DiveMapBehaviour : MonoBehaviour
                 foreach (var fish in EntityRegistry.AllFish)
                 {
                     if (fish == null) continue;
+                    // Skip dead fish (killed/carved/picked up) — InteractionType changes from None
+                    try
+                    {
+                        var iType = fish.InteractionType;
+                        if (iType == FishInteractionBody.FishInteractionType.Carving ||
+                            iType == FishInteractionBody.FishInteractionType.Pickup)
+                        { fishSkipped++; continue; }
+                    }
+                    catch { }
                     if (!showDistant && !fish.gameObject.activeInHierarchy) { fishSkipped++; continue; }
                     var pos = fish.transform.position;
                     if (pos == Vector3.zero) continue;
