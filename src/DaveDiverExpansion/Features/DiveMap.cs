@@ -1212,16 +1212,26 @@ public class DiveMapBehaviour : MonoBehaviour
                 foreach (var fish in EntityRegistry.AllFish)
                 {
                     if (fish == null) continue;
-                    // Skip dead fish (killed/carved/picked up) — InteractionType changes from None
-                    try
+                    bool active = fish.gameObject.activeInHierarchy;
+
+                    // Dead/collected fish detection via IsEnableInteraction.
+                    // DisableInteraction() is the game's fish-death path — it calls
+                    // set_IsEnableInteraction(false), which writes the backing field at [obj+188].
+                    // Streaming (SetActive on root GO) does NOT touch IsEnableInteraction,
+                    // so streamed-out alive fish retain IsEnableInteraction=true.
+                    // Locked ConditionFishInteraction fish (uncaught shrimp/seahorse before tool unlock)
+                    // are active=true, IsEnableInteraction=false → correct: still show them.
+                    bool isEnabled = true;
+                    try { isEnabled = fish.IsEnableInteraction; } catch { }
+                    if (!active && !isEnabled)
                     {
-                        var iType = fish.InteractionType;
-                        if (iType == FishInteractionBody.FishInteractionType.Carving ||
-                            iType == FishInteractionBody.FishInteractionType.Pickup)
-                        { fishSkipped++; continue; }
+                        fishSkipped++;
+                        if (debugFish)
+                            Plugin.Log.LogInfo($"[DiveMap] fish skip(dead): {fish.gameObject.name} active=false isEnabled=false iType={GetInteractionTypeName(fish)}");
+                        continue;
                     }
-                    catch { }
-                    if (!showDistant && !fish.gameObject.activeInHierarchy) { fishSkipped++; continue; }
+
+                    if (!showDistant && !active) { fishSkipped++; continue; }
                     var pos = fish.transform.position;
                     if (pos == Vector3.zero) continue;
                     // Determine aggression via FishAIData.AggressionType
@@ -1248,7 +1258,7 @@ public class DiveMapBehaviour : MonoBehaviour
                             : new Color(0.3f, 0.6f, 1f);  // blue for normal
                     var fishShape = aggressive ? MarkerShape.Triangle : MarkerShape.Circle;
                     if (debugFish && _fishDebugLogged.Add(fish.gameObject.name))
-                        LogFishDebug(fish, aggressive);
+                        LogFishDebug(fish, aggressive, active, isEnabled);
                     _fishCache.Add((fish.transform, pos, color, fishShape));
                 }
             }
@@ -1291,15 +1301,35 @@ public class DiveMapBehaviour : MonoBehaviour
 
         if (DiveMap.DebugLog.Value)
         {
-            int fishInactive = 0;
+            int fishActive = 0, fishDistant = 0, fishCatchable = 0;
             for (int i = 0; i < _fishCache.Count; i++)
             {
-                try { if (_fishCache[i].tr != null && !_fishCache[i].tr.gameObject.activeInHierarchy) fishInactive++; }
+                try
+                {
+                    var tr = _fishCache[i].tr;
+                    if (tr == null) continue;
+                    bool act = tr.gameObject.activeInHierarchy;
+                    if (act) fishActive++; else fishDistant++;
+                    if (_fishCache[i].color.g > 0.9f && _fishCache[i].color.r < 0.5f) fishCatchable++; // green = catchable
+                }
+                catch { }
+            }
+
+            // Count dead fish still in registry (inactive + IsEnableInteraction=false)
+            int fishDead = 0;
+            foreach (var f in EntityRegistry.AllFish)
+            {
+                try
+                {
+                    if (f != null && !f.gameObject.activeInHierarchy && !f.IsEnableInteraction)
+                        fishDead++;
+                }
                 catch { }
             }
 
             Plugin.Log.LogInfo($"[DiveMap] scan: static={_staticCache.Count}(itemSkip={itemSkipped},chestSkip={chestSkipped})" +
-                $" fish={_fishCache.Count}(skip={fishSkipped},inactive={fishInactive}) ores={_oreCache.Count}" +
+                $" fish={_fishCache.Count}(active={fishActive},distant={fishDistant},catchable={fishCatchable},skip={fishSkipped},dead={fishDead})" +
+                $" ores={_oreCache.Count}" +
                 $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count},ores={EntityRegistry.AllBreakableOres.Count},mining={EntityRegistry.AllMiningNodes.Count})");
         }
     }
@@ -1509,20 +1539,24 @@ public class DiveMapBehaviour : MonoBehaviour
         4 => "Neutral", 5 => "OnlyMoveWaypoint", _ => $"Unknown({val})"
     };
 
+    private static string GetInteractionTypeName(FishInteractionBody fish)
+    {
+        try { return $"{fish.InteractionType}({(int)fish.InteractionType})"; } catch { return "?"; }
+    }
+
     /// <summary>
     /// Logs detailed fish properties for debugging aggressive detection.
     /// Called once per unique fish prefab name when DebugLog is enabled.
     /// </summary>
-    private static void LogFishDebug(FishInteractionBody fish, bool aggressive)
+    private static void LogFishDebug(FishInteractionBody fish, bool aggressive, bool active, bool isEnabled)
     {
         try
         {
             string name = fish.gameObject.name;
             bool hasAFT = fish.GetComponent<DR.AI.AwayFromTarget>() != null;
             int aggrType = GetAggressionType(fish);
-            string interType = "?";
-            try { interType = $"{fish.InteractionType}({(int)fish.InteractionType})"; } catch { }
-            Plugin.Log.LogInfo($"[DiveMap] fish: {name} | AggrType={AggrTypeName(aggrType)} AFT={hasAFT} InterType={interType} → aggressive={aggressive}");
+            string interType = GetInteractionTypeName(fish);
+            Plugin.Log.LogInfo($"[DiveMap] fish: {name} | AggrType={AggrTypeName(aggrType)} AFT={hasAFT} InterType={interType} active={active} isEnabled={isEnabled} → aggressive={aggressive}");
         }
         catch (System.Exception e)
         {

@@ -30,16 +30,54 @@
 
 ## 鱼交互条件系统
 
+### FishInteractionType 是静态配置，不是运行时状态
+
+⚠️ **关键陷阱**：`FishInteractionBody.InteractionType`（`None/Carving/Pickup/Calldrone`）是 Unity 编辑器里预先配置在 prefab 上的**静态字段**，运行时不会随鱼的死亡而改变。
+
+- 普通小鱼：编辑器配置 `InteractionType = Pickup`（直接拾取体）
+- 大型鱼：编辑器配置 `InteractionType = Carving`（需要解剖）
+- 可捕捉生物（虾/海马）：`ConditionFishInteraction.Awake()` 和 `Update()` 均写 `InteractionType = Pickup`，活着时就是 Pickup
+- **鱼被杀/捕后 InteractionType 不变**，不能用它判断死亡
+
 ### ConditionFishInteraction（条件交互控制）
 
 挂在需要特定条件才能拾取的鱼/生物身上（如海天使、海马等需要捕虫网的生物）。
 
 **ConditionType 枚举**: `None=0, HasItem=1, UnlockedContents=2`
 
-**工作机制**（通过 IsilDump 逆向确认）：
-- `Awake()`: 将关联的 `FishInteractionBody.isInteractable` 设为 false，`IsEnableInteraction` 设为 false，`InteractionType` 设为 2（Pickup）
-- `Update()`: 每帧检查 `conditionType == UnlockedContents`，若 `ContentsUnlockManager.IsUnlock(unlockedContent)` 返回 true，则启用 `FishInteractionBody.IsEnableInteraction` 并设 `InteractionType = Pickup`
+**工作机制**（通过 IsilDump 逆向确认，字段偏移来自 native 代码）：
+- `Awake()`: 将关联的 `FishInteractionBody.isInteractable` 设为 false，`IsEnableInteraction` 设为 false，`InteractionType` 写为 2（Pickup）→ `[fishBody+208] = 2`
+- `Update()`: 每帧检查 `conditionType == UnlockedContents`，若 `ContentsUnlockManager.IsUnlock(unlockedContent)` 返回 true，则将 `IsEnableInteraction` 设为 true 并再次写 `InteractionType = Pickup`
 - `IsAbleToInteraction` getter: 同上逻辑，但只读
+
+**结论**：可捕捉生物在**整个生命周期**中 `InteractionType` 都是 `Pickup`，无论活着还是已被捕获。
+
+### 鱼的死亡状态检测（DiveMap 场景）
+
+**正确方式**：同时检查 `activeInHierarchy` 和 `IsEnableInteraction`。
+
+- `DisableInteraction()` 是游戏的鱼死亡/被捕路径（CallerCount=7），调用 `set_IsEnableInteraction(false)` 写 `[obj+188] = false`
+- 游戏流式传输系统只对根 GO 调用 `SetActive(false)`，**不会改变** `IsEnableInteraction` 的 backing field
+- 因此可以区分：
+
+| 状态 | active | IsEnableInteraction | 结论 |
+|------|--------|---------------------|------|
+| 存活（视野内） | true | true | 显示 |
+| 存活（流式传输，距离远） | false | true | ShowDistantFish 控制 |
+| 被击杀/捕捉（DisableInteraction 已调用） | false | false | 死亡，隐藏 |
+| 未解锁的条件生物（ConditionFishInteraction） | true | false | 活着，仍显示 |
+
+```csharp
+bool active = fish.gameObject.activeInHierarchy;
+bool isEnabled = true;
+try { isEnabled = fish.IsEnableInteraction; } catch { }
+// 死鱼：inactive 且 IsEnableInteraction=false
+if (!active && !isEnabled) { /* 跳过，已死亡 */ continue; }
+// 远处存活鱼（streaming）：inactive 但 IsEnableInteraction=true
+if (!active && !showDistant) continue;
+```
+
+⚠️ **不要用 `InteractionType` 判断死亡**（见上方"FishInteractionType 是静态配置"）。
 
 ### FishInteractionBody.CheckAvailableInteraction 实际逻辑
 
