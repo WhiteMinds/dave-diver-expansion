@@ -85,13 +85,13 @@ public static class DiveMap
             "Show ore/mineral markers on the map");
         ShowFish = config.Bind(
             "DiveMap", "ShowFish", false,
-            "Show normal fish markers on the map (non-aggressive, non-catchable)");
+            "Show normal fish markers on the map (non-aggressive, non-catchable). Note: some large fish like tuna patrol fixed routes and can deal contact damage, but are classified as normal since they don't actively chase the player.");
         ShowAggressiveFish = config.Bind(
             "DiveMap", "ShowAggressiveFish", true,
-            "Show aggressive fish markers on the map (e.g. sharks, piranhas)");
+            "Show aggressive fish markers on the map. These fish actively attack or chase the player (e.g. sharks, jellyfish, lionfish, triggerfish).");
         ShowCatchableFish = config.Bind(
             "DiveMap", "ShowCatchableFish", true,
-            "Show catchable fish markers on the map (e.g. shrimp, seahorse)");
+            "Show catchable fish markers on the map. These fish flee from the player and can be caught with special tools (e.g. shrimp, seahorse).");
         ShowItems = config.Bind(
             "DiveMap", "ShowItems", false,
             "Show item markers on the map");
@@ -1288,6 +1288,7 @@ public class DiveMapBehaviour : MonoBehaviour
                 try { if (_fishCache[i].tr != null && !_fishCache[i].tr.gameObject.activeInHierarchy) fishInactive++; }
                 catch { }
             }
+
             Plugin.Log.LogInfo($"[DiveMap] scan: static={_staticCache.Count}(itemSkip={itemSkipped},chestSkip={chestSkipped})" +
                 $" fish={_fishCache.Count}(skip={fishSkipped},inactive={fishInactive}) ores={_oreCache.Count}" +
                 $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count},ores={EntityRegistry.AllBreakableOres.Count},mining={EntityRegistry.AllMiningNodes.Count})");

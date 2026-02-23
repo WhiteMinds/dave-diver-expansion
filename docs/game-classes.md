@@ -80,6 +80,34 @@
 | `DR.AI.SABaseFishSystem` : `SpecialAttackerFishAISystem` | 鱼 AI 系统 | 所有鱼都有此组件。`FishAIData`(SAFishData)、`IsAggressive`(virtual bool)。**注意**：继承链依赖 `Sirenix.Serialization`，interop 中缺少 `SerializedScriptableObject` 包装类，**不能直接用 `GetComponent<SABaseFishSystem>()`**，需通过 IL2CPP 低级 API 访问 |
 | `DR.AI.AwayFromTarget` : `AIAbility` | 逃跑 AI 能力 | 大多数非攻击性鱼有此组件。**但部分攻击性鱼也有**（如虾、海马、鱿鱼），不能仅凭此判断攻击性 |
 | `SAFishData` : `SerializedScriptableObject` | 鱼配置数据 | `AggressionType`(FishAggressionType 枚举)、`PeckingOrder`(int)。通过 `SABaseFishSystem.FishAIData` 访问 |
+| `BoidGroup` : `DRMonoBehaviour` | 鱼群管理器 | `Start()` 中启动 `InitRoutine` 协程，动态 Instantiate 子鱼 GameObject。每个鱼群是一个 `Boid_SA_*` prefab 克隆，children 数即鱼数 |
+| `InhancedAutoActivatorForFish` : `AIAbilityData` | 鱼距离激活器 | `Init(SABaseFishSystem)` 注册到 `AutoActivatorJob`，订阅 `LODData.IsInRangeRP` 回调控制 Behaviour/Renderer 启用 |
+| `AutoActivatorJob.LODData` | 距离 LOD 数据 | `IsInRangeRP`(ReactiveProperty\<bool\>) — 玩家是否在范围内。鱼的激活阈值 0.73f / 停用阈值 1.1f |
+
+## 鱼的生成与激活机制
+
+### 生成方式
+
+鱼**不是**场景加载时全部预创建的。`BoidGroup`（鱼群管理器）在 `Start()` 中启动 `InitRoutine` 协程，**按需动态 Instantiate** 子鱼 GameObject。玩家游到新区域时，该区域的 BoidGroup 触发 Start → 生成鱼 → 鱼的 `FishInteractionBody.Awake()` 触发 → 注册到 EntityRegistry。
+
+日志实测数据（单次潜水）：registry 中鱼数从 3 → 20 → 50 → 101 随玩家探索逐步增长，且每次增长都对应 `BoidGroup.Start` 日志。
+
+### 距离激活系统（AutoActivatorJob + LODData）
+
+鱼创建后，`InhancedAutoActivatorForFish.Init` 将其注册到 `AutoActivatorJob` 距离管理系统：
+
+1. 调用 `AutoActivatorJob.RequestManagement(fishAI)` 注册
+2. 设定距离阈值：激活 0.73f / 停用 1.1f（归一化比例）
+3. 订阅 `LODData.IsInRangeRP`（ReactiveProperty\<bool\>）的变化回调
+4. 当 `_isIn=true`（进入范围）：`Behaviour.enabled = true`、`Renderer.enabled = true`
+5. 当 `_isIn=false`（离开范围）：`Behaviour.enabled = false`、`Renderer.enabled = false`、停止声音
+
+### EntityRegistry 捕获验证
+
+通过 `FindObjectsOfType<FishInteractionBody>` 与 `EntityRegistry.AllFish` 的对比诊断（已验证并移除）：
+- **`missingFromRegistry=0`** — EntityRegistry 通过 `Awake` patch 捕获了所有鱼，无遗漏
+- **`sceneFish < registry fish`** — `FindObjectsOfType` 只返回 active 对象；远距离鱼被 `SetActive(false)` 后不会被 FindObjectsOfType 返回，但仍存在于 EntityRegistry 中
+- **结论**：DiveMap 标记"靠近才出现"是因为鱼本身是 BoidGroup 按需动态创建的，不是 EntityRegistry 遗漏
 
 ### 鱼攻击性检测（FishAggressionType）
 
