@@ -163,7 +163,7 @@ var aggrFieldPtr = IL2CPP.GetIl2CppField(dataClassPtr, "AggressionType");
 | `Common.Contents.MoveScenePanel` | 场景切换菜单面板 | `OnPlayerEnter(bool)`, `ShowList(bool)`, `OnOpen()`, `OnClick()`, `OnCancel()`, `IsOpened`, `IsEntered` |
 | `Common.Contents.MoveSceneTrigger` | 场景切换触发器（碰撞体） | `OnPlayerEnter(bool)`, 引用 `m_Panel`(MoveScenePanel) |
 | `Common.Contents.MoveSceneElement` | 场景切换菜单选项 | `sceneName`(枚举: Lobby/SuShi/Farm/FishFarm/SushiBranch/Dredge), `OnClick()`, `IsLocked`, `CheckUnlock()` |
-| `LobbyMainCanvasManager` : `Singleton<>` | Lobby 场景 UI 管理器 | `MoveScenePanel`(属性), `OnDREvent(DiveTriggerEvent)` |
+| `LobbyMainCanvasManager` : `Singleton<>` | Lobby 场景 UI 管理器 | `MoveScenePanel`(属性), `OnDREvent(DiveTriggerEvent)`, `isInitFinish`(bool, 见下方 § 各场景玩家类) |
 | `DiveTrigger` | 潜水出发触发器 | `m_Panel`(LobbyStartGamePanelUI), `OnPlayerEnter(bool)` |
 | `LobbyStartGamePanelUI` | 潜水出发面板（长按出发） | `Activate(bool)`, `StartGame(StartParameter)`, `StartGameByMirror(string, SceneConnectLocationID)` |
 | `MainCanvasManager` : `Singleton<>` | 游戏内 UI 画布管理器 | `pausePopupPanel`(PausePopupMenuPanel), `quickPausePopup`(QuickPausePopup), `IsQuickPause`(bool) |
@@ -335,3 +335,47 @@ MoveSceneElement (单个选项)
 
 - 每个非潜水场景有各自的 `MoveScenePanel` 实例
 - 潜水出发是另一个系统：`DiveTrigger` → `LobbyStartGamePanelUI`（长按出发）
+
+## 各场景玩家类型与状态检测（⚠️ 未验证）
+
+> **注意**：以下信息来自反编译代码分析和 IsilDump 推断，尚未通过实际 mod 开发验证。部分结论可能不准确。
+
+每个游戏场景使用**完全不同的玩家类**，没有统一的"玩家是否可操作"接口：
+
+| 场景 | 场景名 | 玩家类 | 状态检测 |
+|------|--------|--------|----------|
+| Lobby | `DR_Lobby` | `LobbyPlayer` | `CurrentState` 枚举（Idle=可操作） |
+| 潜水 | `DR_InGame` | `PlayerCharacter` | `IsActionLock`, `IsScenarioPlaying` |
+| 寿司店 | `DR_SushiBar` | `SushiBarPlayerHanlder`（注意游戏原始拼写错误） | `IsMovable`(方法), 无锁定属性 |
+| 农场 | `DR_Farm` | `FarmPlayerView` | 无已知锁定属性 |
+| 鱼塘 | `DR_FishFarm` | `FishFarmPlayerView` | 无已知锁定属性 |
+
+### LobbyPlayer 状态枚举
+
+```
+LobbyPlayerState: Idle=0, Call, Die, Clear, MaskOffClear, Diving, ThumbUp,
+                  MorningStart, AfternoonStart, EveningStart, Memo, EnterBoat, InBoat
+```
+
+- 只有 `Idle` 表示玩家可自由移动
+- `IsMoving`(bool) 属性表示是否正在移动动画中
+
+### Lobby 初始化序列（⚠️ 未验证）
+
+加载 Lobby 场景时的初始化顺序（基于 IsilDump 推断，实际时序可能不同）：
+
+1. `LobbyPlayer` 创建，初始状态为 `Idle`（**此时玩家尚未准备好，但 state=Idle**）
+2. `LobbyMainCanvasManager` 初始化，`isInitFinish=false`
+3. `LobbyPostRoutine.AfterNewMissionFinished()` 协程执行（对话、过场、UI 设置等）
+4. 协程中调用 `LobbyPlayer.ChangeLobbyPlayerState(MorningStart)`（开始早晨动画）
+5. 协程完成后设置 `LobbyMainCanvasManager.isInitFinish=true`
+
+**⚠️ 关键间隙**：步骤 1-3 之间存在若干帧的间隙，此时 `LobbyPlayer.CurrentState==Idle` 但场景尚未准备好。可用 `Singleton<LobbyMainCanvasManager>._instance?.isInitFinish` 检测是否初始化完成。
+
+### 跨场景玩家检测的难点（⚠️ 未验证）
+
+- `PlayerCharacter.IsActionLock` 在非潜水场景（寿司店、农场等）中**永远为 true**——不能作为通用判断
+- `PlayerCharacter.IsScenarioPlaying` 是可靠的剧情播放检测，但仅存在于 `PlayerCharacter`
+- 非潜水场景（寿司店、农场）没有已知的统一锁定 API
+- `MoveScenePanel` 的存在可作为"场景已加载且可交互"的近似判断（proxy）
+- 场景切换期间，对象会短暂销毁/重建，造成状态检测的"闪烁"（brief windows of incorrect state）

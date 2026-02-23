@@ -295,17 +295,21 @@ public static class ConfigUI
         div2LE.preferredHeight = 2;
         div2LE.flexibleHeight = 0;
 
-        // Description bar
+        // Description bar — auto-sizes height to fit long descriptions
         var descGO = CreateUIObject("DescBar", _panelGO);
         var descLE = descGO.AddComponent<LayoutElement>();
-        descLE.preferredHeight = 40;
+        descLE.minHeight = 20;
         descLE.flexibleHeight = 0;
         _descText = descGO.AddComponent<Text>();
         _descText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         _descText.fontSize = 13;
         _descText.color = new Color(0.65f, 0.65f, 0.7f);
         _descText.alignment = TextAnchor.MiddleLeft;
+        _descText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        _descText.verticalOverflow = VerticalWrapMode.Overflow;
         _descText.text = "";
+        var descFitter = descGO.AddComponent<ContentSizeFitter>();
+        descFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         // Start hidden
         _panelGO.SetActive(false);

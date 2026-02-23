@@ -21,7 +21,8 @@ public static class QuickSceneSwitch
     {
         Enabled = config.Bind(
             "QuickSceneSwitch", "Enabled", true,
-            "Open the scene-switch menu with a hotkey (no need to walk to the exit)");
+            "Open the scene-switch menu with a hotkey (no need to walk to the exit). " +
+            "WARNING: Using during cutscenes/story events may cause missions to be skipped or unexpected behavior.");
         ToggleKey = config.Bind(
             "QuickSceneSwitch", "ToggleKey", KeyCode.F2,
             "Key to open/close the scene-switch menu");

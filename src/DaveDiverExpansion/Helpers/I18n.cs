@@ -85,7 +85,7 @@ public static class I18n
         // Config descriptions
         ["Key to open/close the in-game settings panel"] = "打开/关闭游戏内设置面板的按键",
         ["UI language (Auto detects from game/system)"] = "界面语言（Auto 自动检测游戏/系统语言）",
-        ["Open the scene-switch menu with a hotkey (no need to walk to the exit)"] = "按快捷键打开场景切换菜单（无需走到出口）",
+        ["Open the scene-switch menu with a hotkey (no need to walk to the exit). WARNING: Using during cutscenes/story events may cause missions to be skipped or unexpected behavior."] = "按快捷键打开场景切换菜单（无需走到出口）。⚠️注意：在过场动画/剧情事件期间使用可能导致任务被跳过或出现意外情况。",
         ["Key to open/close the scene-switch menu"] = "打开/关闭场景切换菜单的按键",
         ["Enable automatic item pickup while diving"] = "潜水时启用自动拾取物品",
         ["Auto-pickup dead fish"] = "自动拾取死鱼",

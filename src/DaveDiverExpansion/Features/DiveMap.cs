@@ -1382,7 +1382,7 @@ public class DiveMapBehaviour : MonoBehaviour
         float nx = (worldPos.x - _viewMin.x) / viewW;
         float ny = (worldPos.y - _viewMin.y) / viewH;
 
-        if (nx < -0.02f || nx > 1.02f || ny < -0.02f || ny > 1.02f)
+        if (nx < 0f || nx > 1f || ny < 0f || ny > 1f)
             return false;
 
         var panelSize = _markerPanel.rect.size;
