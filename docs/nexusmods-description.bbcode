@@ -100,13 +100,24 @@ You can also edit the config file directly:
 [*][font=Courier New]ShowFish[/font] (default: false) — Show normal fish markers
 [*][font=Courier New]ShowAggressiveFish[/font] (default: true) — Show aggressive fish markers
 [*][font=Courier New]ShowCatchableFish[/font] (default: true) — Show catchable fish markers
-[*][font=Courier New]ShowDistantFish[/font] (default: true) — Show markers for distant streamed-out fish
+[*][font=Courier New]ShowDistantFish[/font] (default: false) — Show markers for distant streamed-out fish
 [*][font=Courier New]ShowItems[/font] (default: false) — Show item markers
 [*][font=Courier New]ShowChests[/font] (default: false) — Show chest markers
 [*][font=Courier New]MarkerScale[/font] (default: 1.0) — Scale multiplier for all map markers (0.5–3x)
 [/list]
 
 [size=3][b]Changelog[/b][/size]
+
+[b]v1.2.0[/b]
+[list]
+[*]DiveMap: Filter dead fish markers — fish in Carving (killed) or Pickup (awaiting collection) state no longer show on the map
+[*]DiveMap: Fixed minimap markers showing slightly beyond map edges (tightened visibility bounds)
+[*]DiveMap: Improved fish config descriptions — clarify behavioral differences between aggressive (active chase), normal (patrol-only contact damage), and catchable (flee-and-catch) fish
+[*]DiveMap: Changed ShowDistantFish default to false (reduces clutter from ghost markers)
+[*]AutoPickup: Skip full-ammo bullet boxes to avoid rapid failed pickup loops
+[*]ConfigUI: Description bar now auto-resizes height with text wrapping for long descriptions
+[*]QuickSceneSwitch: Added warning about cutscene/story event usage
+[/list]
 
 [b]v1.1.0[/b]
 [list]

@@ -94,7 +94,7 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 | `ShowFish` | `false` | Show normal fish markers (non-aggressive, non-catchable) |
 | `ShowAggressiveFish` | `true` | Show aggressive fish markers (e.g. sharks, piranhas) |
 | `ShowCatchableFish` | `true` | Show catchable fish markers (e.g. shrimp, seahorse) |
-| `ShowDistantFish` | `true` | Show markers for distant streamed-out fish |
+| `ShowDistantFish` | `false` | Show markers for distant streamed-out fish |
 | `ShowItems` | `false` | Show item markers |
 | `ShowChests` | `false` | Show chest markers |
 | `MarkerScale` | `1.0` | Scale multiplier for all map markers (0.5–3x) |
