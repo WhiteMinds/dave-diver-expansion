@@ -35,6 +35,11 @@ Cpp2IL-Win.exe --game-path="<GamePath>" --output-root=.tmp/cpp2il_out --use-proc
 
 # 游戏更新后，同步引用 DLL 到 lib/（供 CI 构建使用）
 bash scripts/update-lib.sh
+
+# 存档编解码（.sav ↔ .json，需要 Node.js >= 14）
+node tools/save-codec/decode.mjs GameSave_00_GD.sav   # 解密 → .json
+node tools/save-codec/decode.mjs GameSave_00_GD.json   # 加密 → .sav
+node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 ```
 
 ## 架构
@@ -44,6 +49,7 @@ bash scripts/update-lib.sh
 ├── docs/                          # 详细文档（见下方索引）
 ├── lib/                           # 引用 DLL（Git LFS）
 ├── scripts/                       # setup-bepinex.sh, update-lib.sh
+├── tools/save-codec/              # 存档编解码工具（.sav ↔ .json）
 └── src/DaveDiverExpansion/
     ├── Plugin.cs                  # BepInEx 入口，Harmony init
     ├── Features/
@@ -68,11 +74,13 @@ bash scripts/update-lib.sh
 | 文档 | 内容 | 何时查阅 |
 |------|------|----------|
 | [docs/game-classes.md](docs/game-classes.md) | 游戏类参考表、物品/鱼/宝箱分类、鱼交互条件系统、捕虫网/手套装备、玩家状态锁定、语言系统、场景切换系统 | 开发新 Harmony 补丁、操作游戏实体时 |
-| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、IsilDump 逆向、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统 | 探索未知游戏类、排查反编译问题时 |
+| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、IsilDump 逆向、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统、存档加载管线、ObscuredString 加密 | 探索未知游戏类、排查反编译问题、存档系统调试时 |
 | [docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md) | uGUI + IL2CPP 踩坑记录（布局、Dropdown 模板、ClassInjector） | 修改/新增 ConfigUI 面板 UI 时 |
 | [docs/divemap-perf.md](docs/divemap-perf.md) | DiveMap 性能优化数据（CPU/GPU profiling） | 优化 DiveMap 性能时 |
 | [docs/release-workflow.md](docs/release-workflow.md) | CI/CD、发布流程、NexusMods 上传、Playwright 自动化、DOM 选择器 | 发布新版本时 |
 | [docs/assetripper-usage.md](docs/assetripper-usage.md) | AssetRipper headless 用法、游戏翻译数据提取 | 需要提取游戏资源/翻译时 |
+| [docs/dlc-godzilla.md](docs/dlc-godzilla.md) | Godzilla DLC 结构（场景、类、AssetBundle 内容、游戏流程） | 开发涉及 DLC 内容/兼容性时 |
+| [tools/save-codec/](tools/save-codec/) | 存档编解码工具（XOR `.sav` ↔ `.json`）、存档格式文档、移植笔记 | 需要读取/修改游戏存档时 |
 
 ## 构建配置
 

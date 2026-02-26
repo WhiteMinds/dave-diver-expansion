@@ -535,7 +535,83 @@ DRInputAsset : InputAsset<SchemeName, MapName>
 
 ---
 
-## 11. 参考 Mod 项目
+## 11. 存档系统（Save System）
+
+### 存档加载管线
+
+游戏通过 `DR.Save.SaveLoadManagerBase<T>.LoadData()` 加载存档，完整流程：
+
+```
+File.ReadAllText(path)                          // UTF-8 解码为 C# string
+  ↓
+Enum.ToString(SaveDataType)                     // → "GameData"（XOR 密钥）
+  ↓
+ObscuredString.EncryptDecrypt(fileContent, key)  // char-level XOR 解密
+  ↓
+SaveConvertSystem.Convert(json, version, ...)    // 版本迁移
+  ↓
+JsonConvert.DeserializeObject<SaveData>(json)    // Newtonsoft.Json 反序列化
+```
+
+### ObscuredString.EncryptDecrypt（CodeStage AntiCheat）
+
+通过 IsilDump 逆向确认，核心实现等价于：
+
+```csharp
+// CodeStage.AntiCheat.ObscuredTypes.ObscuredString
+static string EncryptDecrypt(string value, string key) {
+    if (string.IsNullOrEmpty(value)) return value;
+    if (string.IsNullOrEmpty(key)) key = defaultKey;  // 静态默认密钥
+
+    char[] result = new char[value.Length];
+    for (int i = 0; i < value.Length; i++) {
+        result[i] = (char)(value[i] ^ key[i % key.Length]);
+    }
+    return new string(result);
+}
+```
+
+**关键**：XOR 在 C# `char` (UTF-16 code unit) 级别操作，key cycling 是 per-char (`i % keyLen`)，**不是** per-byte。这与上游 DaveSaveEd (C++/Python) 的 byte-level XOR 实现有本质区别。
+
+辅助方法：
+- `GetBytes(string)` — `str.ToCharArray()` + `Buffer.BlockCopy` → 直接 UTF-16LE 内存拷贝，不是 UTF-8
+- `GetString(byte[])` — `Buffer.BlockCopy` → `new char[len/2]` → `new string(chars)`
+- 这两个方法仅用于 `InternalEncrypt`/`InternalDecrypt`（内部加密存储），不用于存档文件的加密
+
+### 错误处理链
+
+存档加载错误的传播路径：
+
+```
+SaveLoadManagerBase.LoadData()
+  catch (Exception) → 记录错误信息到 failedToLoadReason
+  ↓
+SaveDataWithDate.HasFailedToLoad = true
+  ↓
+UIListSaveData 构造函数（5 个 JSON 解析器逐个尝试）
+  ↓
+SaveLoadPopupCell.SetErrorCell() → 显示 m_ErrorRoot UI（"存档文件错误"）
+```
+
+**没有 checksum/hash 校验** — 存档错误纯粹是 JSON 反序列化（Newtonsoft.Json）抛出的异常。
+
+### SaveDebug 临时 Hook 点（调试用）
+
+调试存档问题时可 Hook 的关键位置：
+
+| 类 | 方法 | 用途 |
+|---|------|------|
+| `GameBase` | `LoadSavedData` | 存档加载入口 |
+| `GameBase` | `_LoadSavedData_b__33_0` | 加载完成回调 |
+| `SaveLoadPopup` | `Show` | UI 弹窗显示（⚠ 有重载，需指定参数类型避免 AmbiguousMatchException）|
+| `SaveLoadPopup` | `Deserialize` | JSON 反序列化 |
+| `SaveLoadPopup` | `Parse` | JObject.Parse |
+| `SaveLoadPopupCell` | `SetData` / `SetErrorCell` | 存档槽位 UI 更新 |
+| `Application.logMessageReceived` | Unity log listener | 捕获所有 `Debug.LogError`/`LogException` |
+
+注意：`SaveLoadPopup.Show` 有多个重载，Harmony `[HarmonyPatch(typeof(SaveLoadPopup), "Show")]` 会触发 `AmbiguousMatchException`，需要用 `[HarmonyPatch]` + `MethodType.Normal` + 明确参数类型列表。
+
+## 12. 参考 Mod 项目
 
 | 项目 | 作者 | 功能 | 参考价值 |
 |------|------|------|----------|

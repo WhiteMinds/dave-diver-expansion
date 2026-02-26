@@ -22,7 +22,6 @@ public class Plugin : BasePlugin
         DiveMap.Init(Config);
         QuickSceneSwitch.Init(Config);
         ConfigUI.Init(Config); // Must be after other features so it discovers their ConfigEntries
-
         // Apply Harmony patches
         _harmony = new Harmony(MyPluginInfo.PLUGIN_GUID);
         _harmony.PatchAll();
