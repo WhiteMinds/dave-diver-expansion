@@ -1214,13 +1214,13 @@ public class DiveMapBehaviour : MonoBehaviour
                     if (fish == null) continue;
                     bool active = fish.gameObject.activeInHierarchy;
 
-                    // Dead/collected fish detection via IsEnableInteraction.
+                    // Dead fish detection via IsEnableInteraction.
                     // DisableInteraction() is the game's fish-death path — it calls
-                    // set_IsEnableInteraction(false), which writes the backing field at [obj+188].
-                    // Streaming (SetActive on root GO) does NOT touch IsEnableInteraction,
+                    // set_IsEnableInteraction(false).
+                    // Streaming (SetActive on root/parent GO) does NOT touch IsEnableInteraction,
                     // so streamed-out alive fish retain IsEnableInteraction=true.
-                    // Locked ConditionFishInteraction fish (uncaught shrimp/seahorse before tool unlock)
-                    // are active=true, IsEnableInteraction=false → correct: still show them.
+                    // Note: many normal/aggressive fish have IsEnableInteraction=false by default
+                    // while active, so we must require !active too.
                     bool isEnabled = true;
                     try { isEnabled = fish.IsEnableInteraction; } catch { }
                     if (!active && !isEnabled)
@@ -1229,6 +1229,29 @@ public class DiveMapBehaviour : MonoBehaviour
                         if (debugFish)
                             Plugin.Log.LogInfo($"[DiveMap] fish skip(dead): {fish.gameObject.name} active=false isEnabled=false iType={GetInteractionTypeName(fish)}");
                         continue;
+                    }
+
+                    // Caught catchable fish detection: the game calls SetActive(false) on
+                    // the fish GO itself, while its parent remains active.
+                    // Streaming-out sets the parent/root inactive instead, so the fish's
+                    // own activeSelf stays true. Check: !activeInHierarchy && !activeSelf
+                    // && parent still active → fish was caught/collected.
+                    if (!active)
+                    {
+                        bool selfActive = true;
+                        try { selfActive = fish.gameObject.activeSelf; } catch { }
+                        if (!selfActive)
+                        {
+                            bool parentActive = false;
+                            try { var p = fish.transform.parent; if (p != null) parentActive = p.gameObject.activeSelf; } catch { }
+                            if (parentActive)
+                            {
+                                fishSkipped++;
+                                if (debugFish)
+                                    Plugin.Log.LogInfo($"[DiveMap] fish skip(caught): {fish.gameObject.name} selfActive=false parentActive=true");
+                                continue;
+                            }
+                        }
                     }
 
                     if (!showDistant && !active) { fishSkipped++; continue; }

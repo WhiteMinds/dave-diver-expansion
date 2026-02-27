@@ -52,28 +52,50 @@
 
 **结论**：可捕捉生物在**整个生命周期**中 `InteractionType` 都是 `Pickup`，无论活着还是已被捕获。
 
-### 鱼的死亡状态检测（DiveMap 场景）
+### 鱼的死亡/捕获状态检测（DiveMap 场景）
 
-**正确方式**：同时检查 `activeInHierarchy` 和 `IsEnableInteraction`。
+需要区分四种 inactive 鱼的状态。检测依据有两个维度：
 
-- `DisableInteraction()` 是游戏的鱼死亡/被捕路径（CallerCount=7），调用 `set_IsEnableInteraction(false)` 写 `[obj+188] = false`
-- 游戏流式传输系统只对根 GO 调用 `SetActive(false)`，**不会改变** `IsEnableInteraction` 的 backing field
-- 因此可以区分：
+**维度 1：`IsEnableInteraction`**
+- `DisableInteraction()` 是游戏的鱼**击杀**路径（CallerCount=7），调用 `set_IsEnableInteraction(false)`
+- 游戏流式传输系统只对根 GO 调用 `SetActive(false)`，**不改变** `IsEnableInteraction`
+- ⚠️ 许多普通鱼/攻击性鱼在 `active=true` 时 `IsEnableInteraction` 就是 `false`，**不能单独用 `!isEnabled` 判断死亡**，必须搭配 `!active`
 
-| 状态 | active | IsEnableInteraction | 结论 |
-|------|--------|---------------------|------|
-| 存活（视野内） | true | true | 显示 |
-| 存活（流式传输，距离远） | false | true | ShowDistantFish 控制 |
-| 被击杀/捕捉（DisableInteraction 已调用） | false | false | 死亡，隐藏 |
-| 未解锁的条件生物（ConditionFishInteraction） | true | false | 活着，仍显示 |
+**维度 2：`activeSelf` vs `activeInHierarchy`**（区分捕获和流式传输）
+- **捕获可捕捉鱼**（虾/海马）时：游戏对鱼自身 GO 调 `SetActive(false)` → `activeSelf=false`，但**不调用 `DisableInteraction()`**，`IsEnableInteraction` 仍为 `true`，parent（BoidGroup）仍 `activeSelf=true`
+- **流式传输 streaming-out**：游戏对 parent/root GO 调 `SetActive(false)` → 鱼自身 `activeSelf=true`，只是 `activeInHierarchy=false`
+
+| 状态 | activeInHierarchy | activeSelf | parent.activeSelf | IsEnableInteraction | 结论 |
+|------|-------------------|------------|-------------------|---------------------|------|
+| 存活（视野内） | true | true | true | true/false* | 显示 |
+| 存活（streaming out） | false | true | false | 不变 | ShowDistantFish 控制 |
+| 被击杀（DisableInteraction） | false | - | - | false | 死亡，隐藏 |
+| 被捕获（catchable fish） | false | false | true | true | 已捕获，隐藏 |
+| 未解锁条件生物 | true | true | true | false | 活着，仍显示 |
+
+*注：普通/攻击性鱼 `IsEnableInteraction` 可能默认为 false。
 
 ```csharp
 bool active = fish.gameObject.activeInHierarchy;
 bool isEnabled = true;
 try { isEnabled = fish.IsEnableInteraction; } catch { }
-// 死鱼：inactive 且 IsEnableInteraction=false
-if (!active && !isEnabled) { /* 跳过，已死亡 */ continue; }
-// 远处存活鱼（streaming）：inactive 但 IsEnableInteraction=true
+
+// 1. 死鱼：inactive 且 IsEnableInteraction=false（击杀路径）
+if (!active && !isEnabled) continue;
+
+// 2. 被捕获的可捕捉鱼：自身 activeSelf=false，但 parent 仍 active
+if (!active)
+{
+    bool selfActive = fish.gameObject.activeSelf;
+    if (!selfActive)
+    {
+        var parent = fish.transform.parent;
+        if (parent != null && parent.gameObject.activeSelf)
+            continue; // 被捕获，隐藏
+    }
+}
+
+// 3. 远处存活鱼（streaming）：selfActive=true 但 activeInHierarchy=false
 if (!active && !showDistant) continue;
 ```
 
