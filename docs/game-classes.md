@@ -230,6 +230,34 @@ var aggrFieldPtr = IL2CPP.GetIl2CppField(dataClassPtr, "AggressionType");
 | `PausePopupMenuPanel` : `BaseUI` | ESC 暂停菜单面板 | `OnPopup()`, `OnClickContinue()`, `OnClickSettings()`, `ShowReturnLobbyPanel()` 。检测是否打开：`gameObject.activeSelf` |
 | `BaseUI` : `MonoBehaviour` | 游戏 UI 面板基类 | `uiDepth` 字段 |
 
+## SubHelper（水下摩托/辅助道具）UI 类
+
+| 类名 | 作用 | 关键字段/方法 |
+|------|------|----------|
+| `SubHelperSpecData` : `SerializedScriptableObject` | 辅助道具规格数据 | `TID`(int), `_SubHelperType`(SubHelperType), `BoosterSpeed`(float), `BatteryDuration`(float, CallerCount=12) ⚠️无图标字段 |
+| `SubHelperUtilData` | SubHelper 图标数据 | `icon`(Sprite), `activeIcon`(Sprite) |
+| `SubHelperUIInfo` : `UnitySerializedDictionary<SubHelperType, SubHelperUtilData>` | SubHelper 类型→图标映射字典 | 通过 `SubHelperUtilPanel.UIResource` 访问 |
+| `SubHelperUtilPanel` : `SerializedMonoBehaviour` | SubHelper 工具面板 | `UIResource`(SubHelperUIInfo) — ⚠️非 Singleton，需 FindObjectOfType |
+| `SubHelperItemInventory` | 辅助道具背包 | `subHelperSlots`(array), `currentUsingHandler`(SubHelperHandler), `StoreInstanceItem(SubHelperSpecData)` |
+| `SubHelperHandler` | 辅助道具运行时处理器 | `_multiplyMoveSpeed`(float), `_absoluteMoveSpeed`(float) |
+
+**SubHelperType 枚举**: `None=0, Drone=1, Booster=2, Net=3, Spotlight=4, Cargo=5, Harpoon=6, Diver=7, Oxygen=8, Sensor=9, BoosterMk2=10, ChargeBattery=11, Explosive=12`
+
+## UIDataText 组件
+
+游戏自定义的文本组件，包裹 `TMP_Text`，通过 TextManager 进行本地化。
+
+**关键 API**：
+- `SetText(textKey)` — 设 `_textKey`（本地化 key），**清除** `_overrideTextFunc`，调 Refresh
+- `SetOverride(OverrideTextFunc, bool)` — 保留 `_textKey`，设 `_overrideTextFunc`，调 Refresh
+- `OverrideTextFunc` — 嵌套委托类型，有 `implicit operator` 从 `System.Func<string, string>` 转换
+
+**⛔ `DelegateSupport.ConvertDelegate<OverrideTextFunc>` 不可用**：创建的 IL2CPP 委托在 native 调用时返回空值。
+
+**覆盖文本的正确做法**：`uiDataText.enabled = false` + 直接设 `GetComponentInChildren<TMP_Text>().text`。复用面板需在 Prefix 恢复 `enabled = true`。
+
+详见 [docs/idiver-upgrade-system.md](idiver-upgrade-system.md) § 4.1-4.2
+
 ## 语言 & 本地化类
 
 | 类名 | 作用 | 关键方法 |

@@ -80,6 +80,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 | [docs/release-workflow.md](docs/release-workflow.md) | CI/CD、发布流程、NexusMods 上传、Playwright 自动化、DOM 选择器 | 发布新版本时 |
 | [docs/assetripper-usage.md](docs/assetripper-usage.md) | AssetRipper headless 用法、游戏翻译数据提取 | 需要提取游戏资源/翻译时 |
 | [docs/dlc-godzilla.md](docs/dlc-godzilla.md) | Godzilla DLC 结构（场景、类、AssetBundle 内容、游戏流程） | 开发涉及 DLC 内容/兼容性时 |
+| [docs/idiver-upgrade-system.md](docs/idiver-upgrade-system.md) | iDiver 升级系统逆向（SubEquipment/IntegratedItem/SpecDataBase 数据结构、鱼叉数据表、升级流程、MakeStatusDic 属性映射、武器伤害路径、存档结构、CallerCount 安全表、UIDataText 覆盖踩坑、自定义图标加载） | 修改 iDiver 升级面板、新增升级项、修改武器伤害时 |
 | [tools/save-codec/](tools/save-codec/) | 存档编解码工具（XOR `.sav` ↔ `.json`）、存档格式文档、移植笔记 | 需要读取/修改游戏存档时 |
 
 ## 构建配置
@@ -100,6 +101,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 - **⛔ 不要 Harmony patch `CallerCount` 极高的方法**——IL2CPP 中许多类的 `Awake`/`Start` 等 Unity 消息方法共享同一 method token，`CallerCount(29514)` 这种级别的方法 patch 后会导致游戏启动即崩溃。选 patch 目标前先在 `decompiled/` 中检查 `[CallerCount(N)]`，选 N 小的方法（详见 [docs/game-internals.md](docs/game-internals.md) § Harmony + IL2CPP CallerCount 陷阱）
 - **⛔ 不要 Harmony patch 序列化数据类的自动属性 getter**（如 `SaveUserOptions.get_CurrentLanguage`）——IL2CPP 会复用 getter 进行无关字段偏移读取，Postfix 收到大量垃圾值。获取游戏语言用 `Singleton<SaveSystem>._instance.UserOptionManager.CurrentLanguage`（详见 [docs/game-classes.md](docs/game-classes.md) § 游戏语言系统）
 - **鱼的死亡/捕获检测**：击杀走 `DisableInteraction()` → `IsEnableInteraction=false`；捕获可捕捉鱼（虾/海马）只对自身 `SetActive(false)` 而不调 `DisableInteraction`，需用 `!activeSelf && parent.activeSelf` 区分捕获和 streaming-out（详见 [docs/game-classes.md](docs/game-classes.md) § 鱼的死亡/捕获状态检测）
+- **⛔ `DelegateSupport.ConvertDelegate` 不可用于 UIDataText.OverrideTextFunc**——创建的 IL2CPP 委托对象非 null，但 native 代码调用时返回空值。覆盖 UIDataText 文本的正确做法：`uiDataText.enabled = false`（禁用 Refresh）+ 直接设 `TMP_Text.text`。复用面板需在 Prefix 恢复 `enabled = true`（详见 [docs/idiver-upgrade-system.md](docs/idiver-upgrade-system.md) § 4.2）
 
 ## 配置系统
 

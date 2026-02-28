@@ -79,6 +79,19 @@ public static class I18n
         ["BottomRight"] = "右下",
         ["BottomLeft"] = "左下",
 
+        // iDiver extension
+        ["iDiverExtension"] = "更多 iDiver 升级选项",
+        ["Harpoon Damage Enhancement"] = "鱼叉伤害强化",
+        ["Movement Speed Enhancement"] = "移动速度强化",
+        ["Booster Speed Enhancement"] = "推进器速度强化",
+        ["Booster Duration Enhancement"] = "推进器持续时间强化",
+        ["Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration). Disabling hides the UI and removes effects, but preserves your upgrade levels."] = "启用额外的 iDiver 升级选项（鱼叉伤害、移动速度、推进器速度和持续时间）。关闭后将隐藏 UI 并移除效果，但不会重置已升级的等级。",
+        // iDiver status labels
+        ["Damage"] = "伤害",
+        ["Move Speed"] = "移动速度",
+        ["Booster Speed"] = "推进速度",
+        ["Duration"] = "持续时间",
+
         // Debug entries
         ["Debug"] = "调试",
         ["DebugLog"] = "调试日志",

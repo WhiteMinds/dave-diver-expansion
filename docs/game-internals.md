@@ -150,6 +150,12 @@ bool isChinese = lang == SystemLanguage.Chinese
 
 两者都通过 `XXX.Instance` 静态属性访问。
 
+**⚠️ 安全访问差异**：
+- `Singleton<T>._instance` — 安全 null check（不会自动创建）
+- `SingletonNoMono<T>.s_Instance` — 安全 null check（**没有** `_instance` 字段）
+- `SingletonNoMono<T>.hasInstance` — bool 检查
+- `Singleton<T>.Instance` / `SingletonNoMono<T>.Instance` — **⛔ 自动创建实例**，不要用于 null check
+
 ### 已知的 SingletonNoMono 子类
 
 ```
@@ -408,30 +414,56 @@ if (subBoundsCol != null)
 
 **已知安全的 patch 目标**：`OnEnable`（MonoBehaviour 原生回调，非 virtual dispatch）、`Awake`（同上）、`SuccessInteract`（具体业务方法）。
 
-### Harmony + IL2CPP CallerCount 陷阱（共享 Method Token）
+### Harmony + IL2CPP 的两条独立约束
 
-**⛔ 不要 Harmony patch `CallerCount` 极高的 Unity 消息方法（如 `Awake`、`Start`、`OnEnable`），除非确认该类的 CallerCount 较低。**
+在 IL2CPP 游戏中 Harmony patch 有**两条独立的约束**，必须同时满足：
 
-IL2CPP 中，许多类的同名 Unity 消息方法（`Awake`、`Start` 等）可能共享同一个 native method token。在 IsilDump / 反编译中可通过 `[CallerCount(N)]` 属性判断：
+| 约束 | 条件 | 后果 | 诊断方式 |
+|------|------|------|----------|
+| **CallerCount 规则** | CallerCount > 0 | patch 静默失效（不崩溃，不报错，Prefix/Postfix 永远不执行） | 日志无输出 |
+| **CallerCount 极高** | CallerCount > 1000 | 游戏启动即崩溃（控制台出现后消失） | 启动崩溃 |
+| **Virtual 方法规则** | virtual/override 且有兄弟子类 | 运行时崩溃（NRE 在 trampoline 中，null guard 无效） | 运行时 NRE |
 
-- **CallerCount 极高**（如 `CrabTrapZone.Awake` 的 `CallerCount(29514)`）：该 method token 被成千上万的类复用。Harmony patch 这样的方法会影响所有共享该 token 的类，导致游戏启动时崩溃（控制台窗口出现后立即关闭，无 Unity 窗口）
-- **CallerCount 较低或为 0**（如 `CrabTrapZone.Start` 的 `CallerCount(0)`）：该方法是该类专属的，Harmony patch 安全
+#### CallerCount 内联（IL2CPP AOT 编译器优化）
 
-**诊断方法**：
-1. 在 `decompiled/ClassName.cs` 中找到目标方法
-2. 检查方法上方的 `[CallerCount(N)]` 属性
-3. 如果 N > 1000，**不要 patch 该方法**，换用同类中 CallerCount 低的替代方法
+**⛔ CallerCount > 0 的方法会被 IL2CPP AOT 编译器内联**，Harmony patch 静默失效。
 
-**典型案例**：
+这不限于极高 CallerCount。实测中 CallerCount=1、2、3、12 的方法**全部被内联**，Harmony Prefix/Postfix 均不执行，无报错。只有 CallerCount=0 的方法（Unity 引擎通过 native dispatch 调用的回调，如 `Update`、`FixedUpdate`、`Awake`）不会被内联。
+
+```
+// ⛔ PlayerCharacter.DetermineMoveSpeed — CallerCount(1)，被内联，patch 静默失效
+// ⛔ PlayerCharacter.UpdateMoveProperty — CallerCount(3)，被内联，patch 静默失效
+// ⛔ SubHelperSpecData.get_BoosterSpeed — CallerCount(2)，被内联
+// ⛔ SubHelperSpecData.get_BatteryDuration — CallerCount(12)，被内联
+
+// ✅ PlayerCharacter.Update — CallerCount(0)，由 Unity 引擎调用，不会被内联
+// ✅ PlayerCharacter.FixedUpdate — CallerCount(0)，同上
+```
+
+**诊断方法**：在 `decompiled/ClassName.cs` 中检查 `[CallerCount(N)]`。**只 patch CallerCount=0 的方法**。
+
+#### CallerCount 极高的 Unity 消息方法
+
+CallerCount 极高（如 29514）的特殊情况：method token 被数千个类共享。Harmony patch 会影响所有类，导致启动崩溃。
+
 ```
 // ⛔ CrabTrapZone.Awake — CallerCount(29514)，patch 后游戏启动即崩溃
-[HarmonyPatch(typeof(CrabTrapZone), nameof(CrabTrapZone.Awake))]  // ⛔ 崩溃
-
 // ✅ CrabTrapZone.Start — CallerCount(0)，安全
-[HarmonyPatch(typeof(CrabTrapZone), nameof(CrabTrapZone.Start))]  // ✅ 正常
 ```
 
-**注意**：这与 virtual 方法陷阱是**不同的问题**。即使方法不是 virtual，如果 CallerCount 极高也会崩溃。两个规则需同时遵守。
+#### Virtual 方法（独立于 CallerCount）
+
+CallerCount=0 的方法如果是 virtual override 且有兄弟子类，仍然**不能 patch**。典型案例：
+
+```
+// ⛔ BoosterHandler.StartUseAlterSubHelper — CallerCount(0)，但是 SubHelperHandler 的
+//    virtual override，其他子类（DroneHandler 等）共享 vtable → 运行时崩溃
+
+// ✅ PlayerCharacter.Update — CallerCount(0)，虽然技术上是 MonoBehaviour 的 override，
+//    但由 Unity 引擎 native message dispatch 调用（不走 C# vtable），且无兄弟子类 → 安全
+```
+
+**安全的 patch 目标**：CallerCount=0 且 (非 virtual/override 或 无兄弟子类的 Unity 回调)。
 
 ### 游戏对象激活距离（Object Streaming）
 
@@ -636,7 +668,29 @@ SaveLoadPopupCell.SetErrorCell() → 显示 m_ErrorRoot UI（"存档文件错误
 
 注意：`SaveLoadPopup.Show` 有多个重载，Harmony `[HarmonyPatch(typeof(SaveLoadPopup), "Show")]` 会触发 `AmbiguousMatchException`，需要用 `[HarmonyPatch]` + `MethodType.Normal` + 明确参数类型列表。
 
-## 12. 参考 Mod 项目
+## 12. 运行时资源加载
+
+### Sprite 按名称查找
+
+游戏中很多图标（如 SubHelper 的 Booster 图标）存储在 ScriptableObject 或 prefab 中，不通过 Addressables/Resources.Load 暴露。可用 `Resources.FindObjectsOfTypeAll<Sprite>()` 搜索已加载的所有 Sprite（包括未激活的）：
+
+```csharp
+var allSprites = Resources.FindObjectsOfTypeAll<Sprite>();
+foreach (var s in allSprites)
+    if (s.name == "Booster_Thumbnail")
+        return s;
+```
+
+**注意**：
+- 返回结果包含所有已加载的资源，不仅限于当前场景
+- 首次搜索后建议缓存到字典（`Dictionary<string, Sprite>`）
+- 某些资源可能在特定场景才加载（如潜水场景的 SubHelper 图标在大厅可能已可用，取决于预加载）
+
+### DelegateSupport.ConvertDelegate 限制
+
+`Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<T>(managedDelegate)` 用于将 C# managed 委托转换为 IL2CPP 委托。**已知问题**：对某些 IL2CPP 委托类型（如 `UIDataText.OverrideTextFunc`），转换产生的委托对象非 null，但 IL2CPP native 代码调用时返回空值。workaround 见 [docs/game-classes.md](game-classes.md) § UIDataText 组件。
+
+## 13. 参考 Mod 项目
 
 | 项目 | 作者 | 功能 | 参考价值 |
 |------|------|------|----------|
