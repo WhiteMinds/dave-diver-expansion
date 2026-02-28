@@ -15,6 +15,7 @@ public static class EntityRegistry
     public static readonly HashSet<InstanceItemChest> AllChests = new();
     public static readonly HashSet<BreakableLootObject> AllBreakableOres = new();
     public static readonly HashSet<InteractionGimmick_Mining> AllMiningNodes = new();
+    public static readonly HashSet<CrabTrapZone> AllCrabTraps = new();
 
     // Periodic null purge for sets without OnDisable cleanup
     private const float PurgeInterval = 2f;
@@ -38,6 +39,7 @@ public static class EntityRegistry
         AllChests.RemoveWhere(c => c == null);
         AllBreakableOres.RemoveWhere(o => o == null);
         AllMiningNodes.RemoveWhere(m => m == null);
+        AllCrabTraps.RemoveWhere(t => t == null);
 
         if (IsDebug)
         {
@@ -142,6 +144,18 @@ static class MiningNodeAwakePatch
     {
         if (__instance == null) return;
         EntityRegistry.AllMiningNodes.Add(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(CrabTrapZone), nameof(CrabTrapZone.Start))]
+static class CrabTrapStartPatch
+{
+    static void Postfix(CrabTrapZone __instance)
+    {
+        if (__instance == null) return;
+        EntityRegistry.AllCrabTraps.Add(__instance);
+        if (Features.DiveMap.DebugLog?.Value == true)
+            Plugin.Log.LogInfo($"[EntityRegistry] CrabTrap+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllCrabTraps.Count})");
     }
 }
 

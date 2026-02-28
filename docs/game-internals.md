@@ -408,6 +408,31 @@ if (subBoundsCol != null)
 
 **已知安全的 patch 目标**：`OnEnable`（MonoBehaviour 原生回调，非 virtual dispatch）、`Awake`（同上）、`SuccessInteract`（具体业务方法）。
 
+### Harmony + IL2CPP CallerCount 陷阱（共享 Method Token）
+
+**⛔ 不要 Harmony patch `CallerCount` 极高的 Unity 消息方法（如 `Awake`、`Start`、`OnEnable`），除非确认该类的 CallerCount 较低。**
+
+IL2CPP 中，许多类的同名 Unity 消息方法（`Awake`、`Start` 等）可能共享同一个 native method token。在 IsilDump / 反编译中可通过 `[CallerCount(N)]` 属性判断：
+
+- **CallerCount 极高**（如 `CrabTrapZone.Awake` 的 `CallerCount(29514)`）：该 method token 被成千上万的类复用。Harmony patch 这样的方法会影响所有共享该 token 的类，导致游戏启动时崩溃（控制台窗口出现后立即关闭，无 Unity 窗口）
+- **CallerCount 较低或为 0**（如 `CrabTrapZone.Start` 的 `CallerCount(0)`）：该方法是该类专属的，Harmony patch 安全
+
+**诊断方法**：
+1. 在 `decompiled/ClassName.cs` 中找到目标方法
+2. 检查方法上方的 `[CallerCount(N)]` 属性
+3. 如果 N > 1000，**不要 patch 该方法**，换用同类中 CallerCount 低的替代方法
+
+**典型案例**：
+```
+// ⛔ CrabTrapZone.Awake — CallerCount(29514)，patch 后游戏启动即崩溃
+[HarmonyPatch(typeof(CrabTrapZone), nameof(CrabTrapZone.Awake))]  // ⛔ 崩溃
+
+// ✅ CrabTrapZone.Start — CallerCount(0)，安全
+[HarmonyPatch(typeof(CrabTrapZone), nameof(CrabTrapZone.Start))]  // ✅ 正常
+```
+
+**注意**：这与 virtual 方法陷阱是**不同的问题**。即使方法不是 virtual，如果 CallerCount 极高也会崩溃。两个规则需同时遵守。
+
 ### 游戏对象激活距离（Object Streaming）
 
 游戏对远处的场景对象执行 `SetActive(false)`，只在玩家附近时激活。这意味着：

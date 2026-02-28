@@ -28,6 +28,7 @@ public static class DiveMap
     public static ConfigEntry<bool> ShowCatchableFish;
     public static ConfigEntry<bool> ShowItems;
     public static ConfigEntry<bool> ShowChests;
+    public static ConfigEntry<bool> ShowCrabTraps;
     public static ConfigEntry<float> MapSize;
     public static ConfigEntry<float> MapOpacity;
     public static ConfigEntry<float> MiniMapZoom;
@@ -98,6 +99,9 @@ public static class DiveMap
         ShowChests = config.Bind(
             "DiveMap", "ShowChests", false,
             "Show chest markers on the map");
+        ShowCrabTraps = config.Bind(
+            "DiveMap", "ShowCrabTraps", true,
+            "Show fish trap spot markers on the map");
         MarkerScale = config.Bind(
             "DiveMap", "MarkerScale", 1f,
             new ConfigDescription("Scale multiplier for all map markers",
@@ -237,6 +241,7 @@ public class DiveMapBehaviour : MonoBehaviour
     private List<(Vector3 pos, Color color, MarkerShape shape)> _staticCache;   // chests + items, rescan periodically
     private List<(Transform tr, Vector3 lastPos, Color color, MarkerShape shape)> _fishCache;    // fish move, update pos every frame; lastPos for inactive (streamed-out) fish
     private List<(Vector3 pos, Color color, MarkerShape shape)> _oreCache;     // ores are static, rescan periodically
+    private List<(Vector3 pos, Color color, MarkerShape shape)> _crabTrapCache; // crab trap zones are static, rescan periodically
     private int _cachedEntityCount;                          // total markers in use after last scan
 
     // Night light overlay: renderers to hide during map camera rendering
@@ -292,6 +297,7 @@ public class DiveMapBehaviour : MonoBehaviour
         if (_staticCache == null) _staticCache = new List<(Vector3, Color, MarkerShape)>();
         if (_fishCache == null) _fishCache = new List<(Transform, Vector3, Color, MarkerShape)>();
         if (_oreCache == null) _oreCache = new List<(Vector3, Color, MarkerShape)>();
+        if (_crabTrapCache == null) _crabTrapCache = new List<(Vector3, Color, MarkerShape)>();
         if (_nightOverlayRenderers == null) _nightOverlayRenderers = new List<Renderer>();
         if (_legendTexts == null) _legendTexts = new List<(Text, string)>();
         if (_helpTexts == null) _helpTexts = new List<(Text, string)>();
@@ -1162,7 +1168,11 @@ public class DiveMapBehaviour : MonoBehaviour
                     if (!item.gameObject.activeInHierarchy) { itemSkipped++; continue; }
                     var pos = item.transform.position;
                     if (pos == Vector3.zero) continue;
-                    _staticCache.Add((pos, new Color(1f, 0.9f, 0.2f), MarkerShape.Diamond)); // yellow item
+                    bool isBulletBox = item.gameObject.name.Contains("BulletBox");
+                    if (isBulletBox)
+                        _staticCache.Add((pos, new Color(1f, 0.25f, 0.3f), MarkerShape.Diamond));  // coral ammo box
+                    else
+                        _staticCache.Add((pos, new Color(1f, 0.9f, 0.2f), MarkerShape.Diamond)); // yellow item
                 }
             }
             catch { }
@@ -1320,7 +1330,26 @@ public class DiveMapBehaviour : MonoBehaviour
             catch { }
         }
 
-        _cachedEntityCount = _staticCache.Count + _fishCache.Count + _oreCache.Count;
+        // Crab trap zones (fish trap spots)
+        _crabTrapCache.Clear();
+        if (DiveMap.ShowCrabTraps.Value)
+        {
+            var trapColor = new Color(0.58f, 0.34f, 0.12f); // brown (#94571F)
+            try
+            {
+                foreach (var trap in EntityRegistry.AllCrabTraps)
+                {
+                    if (trap == null) continue;
+                    try { if (trap.IsDisabled) continue; } catch { continue; }
+                    var pos = trap.transform.position;
+                    if (pos == Vector3.zero) continue;
+                    _crabTrapCache.Add((pos, trapColor, MarkerShape.Square));
+                }
+            }
+            catch { }
+        }
+
+        _cachedEntityCount = _staticCache.Count + _fishCache.Count + _oreCache.Count + _crabTrapCache.Count;
 
         if (DiveMap.DebugLog.Value)
         {
@@ -1352,8 +1381,8 @@ public class DiveMapBehaviour : MonoBehaviour
 
             Plugin.Log.LogInfo($"[DiveMap] scan: static={_staticCache.Count}(itemSkip={itemSkipped},chestSkip={chestSkipped})" +
                 $" fish={_fishCache.Count}(active={fishActive},distant={fishDistant},catchable={fishCatchable},skip={fishSkipped},dead={fishDead})" +
-                $" ores={_oreCache.Count}" +
-                $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count},ores={EntityRegistry.AllBreakableOres.Count},mining={EntityRegistry.AllMiningNodes.Count})");
+                $" ores={_oreCache.Count} traps={_crabTrapCache.Count}" +
+                $" registry(fish={EntityRegistry.AllFish.Count},items={EntityRegistry.AllItems.Count},chests={EntityRegistry.AllChests.Count},ores={EntityRegistry.AllBreakableOres.Count},mining={EntityRegistry.AllMiningNodes.Count},traps={EntityRegistry.AllCrabTraps.Count})");
         }
     }
 
@@ -1425,6 +1454,15 @@ public class DiveMapBehaviour : MonoBehaviour
             m.rectTransform.sizeDelta = new Vector2(oreSize, oreSize);
             m.gameObject.SetActive(SetMarkerPosition(m, _oreCache[i].pos));
         }
+        // Crab traps
+        for (int i = 0; i < _crabTrapCache.Count && idx < MaxEntityMarkers; i++, idx++)
+        {
+            var m = _entityMarkers[idx];
+            m.sprite = GetShapeSprite(_crabTrapCache[i].shape);
+            m.color = _crabTrapCache[i].color;
+            m.rectTransform.sizeDelta = new Vector2(entitySize, entitySize);
+            m.gameObject.SetActive(SetMarkerPosition(m, _crabTrapCache[i].pos));
+        }
         // Only hide markers that were active last frame but aren't now
         for (int i = idx; i < _prevEntityIdx; i++)
             _entityMarkers[i].gameObject.SetActive(false);
@@ -1489,6 +1527,7 @@ public class DiveMapBehaviour : MonoBehaviour
         _staticCache.Clear();
         _fishCache.Clear();
         _oreCache.Clear();
+        _crabTrapCache.Clear();
         _nightOverlayRenderers.Clear();
         _escapeScanned = false;
         _nightOverlayScanned = false;
@@ -1616,10 +1655,12 @@ public class DiveMapBehaviour : MonoBehaviour
             ("Normal Fish",     new Color(0.3f, 0.6f, 1f),         MarkerShape.Circle),
             ("Catchable Fish",  new Color(0.4f, 1f, 0.4f),         MarkerShape.Circle),
             ("Item",            new Color(1f, 0.9f, 0.2f),         MarkerShape.Diamond),
+            ("Ammo Box",        new Color(1f, 0.25f, 0.3f),         MarkerShape.Diamond),
             ("Chest",           new Color(1f, 0.6f, 0.2f),         MarkerShape.Square),
             ("O2 Chest",        new Color(0.2f, 0.85f, 1f),        MarkerShape.Square),
             ("Material Chest",  new Color(0.85f, 0.2f, 0.6f),      MarkerShape.Square),
             ("Ore",             new Color(1f, 0.5f, 0.9f),         MarkerShape.Diamond),
+            ("Trap Spot",       new Color(0.58f, 0.34f, 0.12f),     MarkerShape.Square),
         };
 
         const float iconSize = 12f;
@@ -1718,8 +1759,8 @@ public class DiveMapBehaviour : MonoBehaviour
         float totalH = padY * 2 + lines.Length * rowH;
         float totalW = padX * 2 + symW + gap + textW;
 
-        // Legend: 10 entries * 18 rowH + 12 pad = 192 total height, centered at anchor
-        float legendH = 192f;
+        // Legend: 12 entries * 18 rowH + 12 pad = 228 total height, centered at anchor
+        float legendH = 228f;
         float helpY = legendH / 2f + 6f + totalH / 2f; // legend top + gap + help center
 
         helpRT.sizeDelta = new Vector2(totalW, totalH);
