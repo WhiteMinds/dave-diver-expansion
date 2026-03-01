@@ -36,13 +36,13 @@ Instantly open the scene-switch menu from anywhere — no need to walk to the ex
 [b]iDiver Extension[/b]
 Adds custom upgrade options to the iDiver upgrade panel.
 [list]
-[*]Harpoon Damage Enhancement — increase harpoon damage per level
-[*]Movement Speed Enhancement — boost player swim speed per level
-[*]Booster Speed Enhancement — increase booster speed per level
-[*]Booster Duration Enhancement — extend booster duration per level
-[*]Crab Trap Count Enhancement — add extra crab traps per level
-[*]Crab Trap Efficiency Enhancement — reduce crab trap catch delay per level
-[*]Drone Count Enhancement — add extra lift drones per level
+[*]Harpoon Damage Enhancement — +8 damage/level, max 5 levels, 10,000g each
+[*]Movement Speed Enhancement — +5% swim speed/level, max 5 levels, 5,000–25,000g
+[*]Booster Speed Enhancement — +5% booster speed/level, max 5 levels, 5,000–25,000g
+[*]Booster Duration Enhancement — +10s duration/level, max 5 levels, 5,000g each
+[*]Crab Trap Count Enhancement — +1 trap/level, max 5 levels, 5,000–25,000g
+[*]Crab Trap Efficiency Enhancement — −10s catch delay/level, max 6 levels, 5,000–30,000g
+[*]Drone Count Enhancement — +1 drone/level, max 10 levels, 10,000g each
 [*]Data-driven design: upgrade levels are saved and persist even when the feature is disabled
 [*]Disabled by default — enable in config panel
 [/list]
@@ -161,6 +161,7 @@ You can also edit the config file directly:
 [*]New: iDiver Crab Trap Efficiency Enhancement — reduce catch delay by 10s per level
 [*]New: iDiver Drone Count Enhancement — +1 drone per level
 [*]New: AutoContinue debug option — auto-load save on title screen (Debug section)
+[*]AutoSeahorseRace: Fixed obstacle dodge failing in subsequent races — obstacle positions are no longer cached, as the game reuses GameObjects at different positions across races
 [/list]
 
 [b]v1.3.0[/b]
