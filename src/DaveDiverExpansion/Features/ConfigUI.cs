@@ -5,6 +5,7 @@ using DaveDiverExpansion.Helpers;
 using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace DaveDiverExpansion.Features;
@@ -18,6 +19,7 @@ namespace DaveDiverExpansion.Features;
 public static class ConfigUI
 {
     private static ConfigEntry<KeyCode> _toggleKey;
+    private static ConfigEntry<bool> _autoContinue;
     private static ConfigFile _configFile;
 
     private static GameObject _canvasGO;
@@ -43,6 +45,10 @@ public static class ConfigUI
     private static float _hoverTimer;
     private const float HoverDelay = 0.3f;
 
+    // Auto-continue state (only triggers once per game launch)
+    private static bool _autoContinueDone;
+    private static float _autoContinueTimer;
+
     // Reset button confirmation state
     private static bool _resetConfirming;
     private static float _resetConfirmTimer;
@@ -61,6 +67,10 @@ public static class ConfigUI
         I18n.LanguageSetting = config.Bind(
             "ConfigUI", "Language", ModLanguage.Auto,
             "UI language (Auto detects from game/system)");
+
+        _autoContinue = config.Bind(
+            "Debug", "AutoContinue", false,
+            "Auto-continue to last save when reaching the title screen");
 
         // Register our MonoBehaviour in IL2CPP type system and spawn it
         ClassInjector.RegisterTypeInIl2Cpp<ConfigUIBehaviour>();
@@ -371,7 +381,8 @@ public static class ConfigUI
                 "MiniMapEnabled", "MiniMapPosition", "MiniMapOffsetX", "MiniMapOffsetY",
                 "MapSize", "MiniMapZoom", "MapOpacity",
                 "ShowEscapePods", "ShowOres", "ShowFish", "ShowAggressiveFish", "ShowCatchableFish", "ShowDistantFish", "ShowItems", "ShowChests", "ShowCrabTraps"
-            }
+            },
+            ["Debug"] = new[] { "DebugLog", "AutoContinue" }
         };
 
         foreach (var section in ordered)
@@ -1036,6 +1047,42 @@ public static class ConfigUI
             _scrollRect.verticalNormalizedPosition + scroll * 40f / range);
     }
 
+    /// <summary>
+    /// Auto-continue: on first arrival at DR_Title scene, call TitleManager.OnContinueGame().
+    /// IsSceneInitialized is set before async init (StartGame/LoadSpriteAtlas) finishes,
+    /// so we wait an additional 3 seconds after it becomes true to ensure the title menu
+    /// is fully interactive before triggering continue.
+    /// </summary>
+    internal static void AutoContinueCheck()
+    {
+        if (_autoContinueDone || !_autoContinue.Value) return;
+
+        try
+        {
+            if (SceneManager.GetActiveScene().name != "DR_Title") return;
+        }
+        catch { return; }
+
+        try
+        {
+            var titleMgr = UnityEngine.Object.FindObjectOfType<DR.Title.TitleManager>();
+            if (titleMgr == null || !titleMgr.IsSceneInitialized) return;
+
+            // Accumulate wait time after IsSceneInitialized becomes true
+            _autoContinueTimer += Time.unscaledDeltaTime;
+            if (_autoContinueTimer < 3f) return;
+
+            _autoContinueDone = true;
+            Plugin.Log.LogInfo("AutoContinue: triggering OnContinueGame on title screen");
+            titleMgr.OnContinueGame();
+        }
+        catch (Exception e)
+        {
+            _autoContinueDone = true;
+            Plugin.Log.LogWarning($"AutoContinue failed: {e.Message}");
+        }
+    }
+
     private static void Hide()
     {
         _isVisible = false;
@@ -1065,6 +1112,7 @@ public class ConfigUIBehaviour : MonoBehaviour
     private void Update()
     {
         ConfigUI.CheckToggle();
+        ConfigUI.AutoContinueCheck();
         QuickSceneSwitch.CheckToggle();
         AutoSeahorseRace.CheckHotkey();
     }

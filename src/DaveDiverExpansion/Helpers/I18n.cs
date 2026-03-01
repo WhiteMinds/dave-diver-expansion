@@ -99,6 +99,8 @@ public static class I18n
         // Debug entries
         ["Debug"] = "调试",
         ["DebugLog"] = "调试日志",
+        ["AutoContinue"] = "自动继续游戏",
+        ["Auto-continue to last save when reaching the title screen"] = "到达主菜单时自动继续上次存档",
 
         // QuickSceneSwitch entries
         ["QuickSceneSwitch"] = "快速切换场景",

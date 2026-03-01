@@ -706,7 +706,100 @@ foreach (var s in allSprites)
 
 `Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<T>(managedDelegate)` 用于将 C# managed 委托转换为 IL2CPP 委托。**已知问题**：对某些 IL2CPP 委托类型（如 `UIDataText.OverrideTextFunc`），转换产生的委托对象非 null，但 IL2CPP native 代码调用时返回空值。workaround 见 [docs/game-classes.md](game-classes.md) § UIDataText 组件。
 
-## 13. 参考 Mod 项目
+## 13. 标题画面系统（Title Screen）
+
+### 场景流程
+
+```
+StartSceneController (Start 场景)
+  → SceneLoader.CoLoadSceneAsync("DR_Logo")
+LogoManager (Logo 场景, 继承 SceneLoaderManagedBehaviour)
+  → AgeGradeEvent 协程 → 播放 Logo 动画
+  → SceneLoader.GoToTitle()
+    → SceneLoader.ChangeSceneAsync("DR_Title")
+DR.Title.TitleManager (Title 场景, 继承 SceneLoaderManagedBehaviour)
+  → Start() 协程（7 个 yield state）
+  → 主菜单按钮: New Game / Continue / Load / Settings / Exit
+```
+
+### TitleManager 关键类
+
+**命名空间**: `DR.Title`
+
+**注意**: `ilspycmd -p` 整体反编译不会生成此类的 .cs 文件（DR.Title 目录为空），但 `ilspycmd -t DR.Title.TitleManager` 可以成功反编译，IsilDump 也有完整信息。
+
+| 方法 | CallerCount | 作用 |
+|------|-------------|------|
+| `get_IsSceneInitialized` | — | 布尔属性，Start 协程 state 5 末尾设为 true |
+| `Start()` | 0 | 协程入口，7 个 yield state 依次执行初始化 |
+| `RefreshButtonList()` | 1 | 刷新菜单按钮列表（state 5 中调用） |
+| `RefreshContinueGame()` | — | 刷新"继续"按钮状态（是否有存档） |
+| `OnContinueGame()` | 0 | 继续游戏入口：创建 Action → CheckKeyboardDuplicate → OnContinueGame_Impl |
+| `OnContinueGame_Impl()` | 0 | 完整继续流程：DLC 检查 → 版本检查 → ContinueGame |
+| `ContinueGame()` | 2 | 最终执行：SaveSystem 存档操作 → GameBase.RestartGame → GoToLobbyEntry |
+| `NewGame()` | 1 | 新游戏 |
+| `OnLoadGame()` | 0 | 打开读档面板 |
+| `GoToLobbyEntry()` | 1 | 调用 SceneLoader.GoToLobbyEntry 进入大厅 |
+| `OnClickSetting()` | 0 | 打开设置面板 |
+| `OnClickQuitGame()` | 0 | 退出游戏 |
+
+### Start 协程初始化流程
+
+```
+State 0: 创建 DisplayClass33_0 → SpriteCollection.PreLoadCommonAtlas → DOTween 动画序列
+         → yield return WaitUntil(condition)
+State 1: TitleManager.ResetHapticSoundVol → GameBase.StartGame(callback)
+         → yield return StartGame 协程
+State 2: 等待额外协程
+         → yield return
+State 3: GameBase.LoadSpriteAtlas
+         → yield return LoadSpriteAtlas 协程
+State 4: AntiCheat.Init → DRGameMode.Init → 检查 HasPrevData/loadFailed
+         → 设置 Continue 按钮 active（根据是否有存档）
+         → RefreshButtonList → SetFocus 到第一个按钮
+         → DayManager.ReloadSaveData → 播放 BGM_Title + AMB_DeepSea
+         → SceneLoaderManagedBehaviour.set_IsSceneReady(true)
+         → CanvasGroup.set_alpha(1) → yield return WaitForEndOfFrame
+State 5: 启用菜单按钮面板 → IsSceneInitialized = true
+         → StartCoroutine(CheckInstalledDLCs)
+         → yield return CheckInstalledDLCs 协程
+State 6: CheckKeyboardDuplicate → CameraResolution.CheckResoultionForWindow → 结束
+```
+
+### ⚠️ IsSceneInitialized 时序陷阱
+
+`IsSceneInitialized` 在 state 5 开头就被设为 true，此时 `CheckInstalledDLCs` 协程尚未完成、`CheckKeyboardDuplicate` 也未执行。如果在 `IsSceneInitialized` 变 true 的同一帧就调用 `ContinueGame()`，会导致：
+- 左上角出现 "Saving" 提示
+- 主菜单输入系统卡死（上下左右空格无响应）
+
+**正确做法**：在 `IsSceneInitialized` 变 true 后等待数秒（当前实现使用 3 秒延迟）再触发继续，确保所有异步初始化完成。
+
+### ContinueGame 内部流程（ISIL 逆向）
+
+```csharp
+void ContinueGame() {
+    var saveSystem = Singleton<SaveSystem>.Instance;
+    var gdm = saveSystem.GameDataManager;
+    var gameData = gdm.???;  // virtual call, 可能是 GetCurrentGameData
+    if (gameData == null) return;
+    if (gameData[0x28] != 0) gameData[0x28] = 0x100;  // 某个标志位操作
+    this.menuButtonPanel?.SetActive(false);  // [this+64] = 菜单按钮面板
+    GameBase.RestartGame();
+    SaveSystem.SaveAllData();
+    GoToLobbyEntry();
+}
+```
+
+### TitleMenuButton
+
+`DR.Title.TitleMenuButton` — 标题菜单的单个按钮组件。
+
+- `Init(TitleManager titleManager)` — 初始化时绑定 TitleManager 引用
+- `SetFocus(bool focus)` — 设置选中状态（高亮）
+
+按钮通过 Unity Editor Inspector 配置 `ButtonName` 枚举值，TitleManager 通过 `OnSelect(ButtonName)` 路由到对应的 `OnNewGame()`/`OnContinueGame()`/`OnLoadGame()` 等方法。
+
+## 14. 参考 Mod 项目
 
 | 项目 | 作者 | 功能 | 参考价值 |
 |------|------|------|----------|

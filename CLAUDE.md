@@ -27,6 +27,9 @@ ilspycmd -t ClassName "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 # 整体反编译到 decompiled/（推荐，一次性，6700+ 文件，方便 Grep 搜索）
 ilspycmd -p -o decompiled "<GamePath>/BepInEx/interop/Assembly-CSharp.dll"
 
+# 并发搜索反编译代码（同时搜索 decompiled/ 和 IsilDump/，19000+ 文件）
+node .tmp/search-decompiled.mjs "pattern1" "pattern2" "pattern3"
+
 # 查看方法的实际 native 实现（当 interop 只有 il2cpp_runtime_invoke 时）
 # IsilDump 位于 .tmp/cpp2il_out/IsilDump/Assembly-CSharp/ClassName.txt
 
@@ -76,7 +79,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 | 文档 | 内容 | 何时查阅 |
 |------|------|----------|
 | [docs/game-classes.md](docs/game-classes.md) | 游戏类参考表、物品/鱼/宝箱分类、鱼交互条件系统、捕虫网/手套装备、玩家状态锁定、语言系统、场景切换系统 | 开发新 Harmony 补丁、操作游戏实体时 |
-| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、IsilDump 逆向、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统、存档加载管线、ObscuredString 加密 | 探索未知游戏类、排查反编译问题、存档系统调试时 |
+| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、IsilDump 逆向、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统、存档加载管线、ObscuredString 加密、标题画面系统（TitleManager 初始化流程、ContinueGame 机制、时序陷阱） | 探索未知游戏类、排查反编译问题、存档系统调试、标题画面交互时 |
 | [docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md) | uGUI + IL2CPP 踩坑记录（布局、Dropdown 模板、ClassInjector） | 修改/新增 ConfigUI 面板 UI 时 |
 | [docs/divemap-perf.md](docs/divemap-perf.md) | DiveMap 性能优化数据（CPU/GPU profiling） | 优化 DiveMap 性能时 |
 | [docs/release-workflow.md](docs/release-workflow.md) | CI/CD、发布流程、NexusMods 上传、Playwright 自动化、DOM 选择器 | 发布新版本时 |
