@@ -350,7 +350,7 @@ public static class ConfigUI
         }
 
         // Display in explicit order; any unknown sections appended at the end
-        var sectionOrder = new[] { "ConfigUI", "QuickSceneSwitch", "AutoPickup", "DiveMap", "iDiverExtension", "Debug" };
+        var sectionOrder = new[] { "ConfigUI", "QuickSceneSwitch", "AutoPickup", "DiveMap", "AutoSeahorseRace", "iDiverExtension", "Debug" };
         var ordered = new List<KeyValuePair<string, List<ConfigEntryBase>>>();
         foreach (var name in sectionOrder)
         {
@@ -1066,5 +1066,6 @@ public class ConfigUIBehaviour : MonoBehaviour
     {
         ConfigUI.CheckToggle();
         QuickSceneSwitch.CheckToggle();
+        AutoSeahorseRace.CheckHotkey();
     }
 }

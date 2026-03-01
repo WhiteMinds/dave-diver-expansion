@@ -56,7 +56,9 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
     │   ├── AutoPickup.cs          # 自动拾取（读取 EntityRegistry）
     │   ├── ConfigUI.cs            # uGUI 配置面板 (F1)
     │   ├── DiveMap.cs             # 潜水地图 HUD (M 键大地图 + 缩放拖拽, 小地图可配置位置)
-    │   └── QuickSceneSwitch.cs    # 快速场景切换 (F2)
+    │   ├── QuickSceneSwitch.cs    # 快速场景切换 (F2)
+    │   ├── AutoSeahorseRace.cs    # 海马赛自动操作
+    │   └── iDiverExtension.cs     # iDiver 自定义升级项
     └── Helpers/
         ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期补丁
         ├── I18n.cs                # 国际化 + SaveSystem API 语言检测
@@ -81,6 +83,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 | [docs/assetripper-usage.md](docs/assetripper-usage.md) | AssetRipper headless 用法、游戏翻译数据提取 | 需要提取游戏资源/翻译时 |
 | [docs/dlc-godzilla.md](docs/dlc-godzilla.md) | Godzilla DLC 结构（场景、类、AssetBundle 内容、游戏流程） | 开发涉及 DLC 内容/兼容性时 |
 | [docs/idiver-upgrade-system.md](docs/idiver-upgrade-system.md) | iDiver 升级系统逆向（SubEquipment/IntegratedItem/SpecDataBase 数据结构、鱼叉数据表、升级流程、MakeStatusDic 属性映射、武器伤害路径、存档结构、CallerCount 安全表、UIDataText 覆盖踩坑、自定义图标加载） | 修改 iDiver 升级面板、新增升级项、修改武器伤害时 |
+| [docs/seahorse-race-internals.md](docs/seahorse-race-internals.md) | 海马赛系统逆向（状态机、碰撞机制、OnObstacle 时序陷阱、仪表系统、AI 参数、赛道结构） | 修改海马赛自动操作功能时 |
 | [tools/save-codec/](tools/save-codec/) | 存档编解码工具（XOR `.sav` ↔ `.json`）、存档格式文档、移植笔记 | 需要读取/修改游戏存档时 |
 
 ## 构建配置
@@ -107,7 +110,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 
 - 所有配置通过 BepInEx `ConfigFile` 管理，自动生成 `.cfg` 文件
 - 内置 uGUI 配置面板（F1 打开），自动发现所有 `ConfigEntry`，语言切换即时生效
-- Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `Debug`
+- Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `iDiverExtension` → `AutoSeahorseRace` → `Debug`
 - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown（选项文本经 `I18n.T()` 翻译）
 - Section 内条目排序：通过 `ConfigUI.RebuildEntries` 中的 `entryOrder` 字典控制 UI 显示顺序（不依赖 cfg 文件中的 bind 顺序）
 - uGUI 开发踩坑记录：[docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md)

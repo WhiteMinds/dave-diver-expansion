@@ -79,6 +79,10 @@ public static class I18n
         ["BottomRight"] = "右下",
         ["BottomLeft"] = "左下",
 
+        // AutoSeahorseRace
+        ["AutoSeahorseRace"] = "海马赛自动操作",
+        ["Automatically control seahorse during racing"] = "在海马赛中自动控制海马",
+
         // iDiver extension
         ["iDiverExtension"] = "更多 iDiver 升级选项",
         ["Harpoon Damage Enhancement"] = "鱼叉伤害强化",
