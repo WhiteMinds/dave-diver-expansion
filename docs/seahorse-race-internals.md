@@ -117,9 +117,21 @@ racer 前沿 = racerPos.x + racerHalfX
 需要开始躲避 = racer前沿 >= obstacle trigger前沿 - buffer
 ```
 
-- 缓存每个障碍物的 `collider.bounds.min.x`（trigger 朝向 racer 的前沿）
-- 缓存 racer 的 `collider.bounds.extents.x`（半宽）
+- **每帧实时读取**障碍物的 `collider.bounds.min.x`（trigger 朝向 racer 的前沿）
+- 缓存 racer 的 `collider.bounds.extents.x`（半宽，同一 racer 不变）
 - buffer ≈ 0.1 单位（60fps 下约 5 帧余量）
+
+### ⛔ 不要缓存障碍物的 collider.bounds
+
+不同赛道的障碍物 GameObject 是**复用**的——同一批 `SeahorseRaceTrackObstacle` 对象在不同场次出现在完全不同的 x 坐标位置（例如第一场在 x=1912~2063，第三场在 x=1312~1342）。
+
+`SeahorseRaceTrackObstacles.Init(index, type)` 通过遍历子障碍物调用 `obstacle.Init()` 并 `SetActive(bool)` 来激活/禁用，但不会销毁/创建新对象。不同赛道配置决定了哪些障碍物被激活以及它们的位置。
+
+如果在首次扫描时缓存 `collider.bounds.min.x`，后续场次的 `FindObstacleAhead` 会用过期坐标比较，导致完全无法检测到前方障碍物（lookahead 失效）。racer 只能依赖游戏的 `OnTriggerEnter` 回调，但该回调与 Update 同帧，来不及完成状态转换。
+
+此外 `SessionStart_Patch`（hook `SeahorseRaceSessionPlay.Start_Impl`）并非每场比赛都会触发（同一 session 内多场比赛可能不经过此路径），缓存清除时机也不可靠。
+
+**正确做法**：每帧用 `FindObjectsOfType<SeahorseRaceTrackObstacle>()` 获取活跃障碍物，实时读取 `collider.bounds.min.x`。Unity 内部已缓存 physics bounds，80 个障碍物的遍历开销可忽略。
 
 ### ⛔ `SeahorseRacer.speed` 不是位移速度
 
@@ -183,10 +195,12 @@ AI 也使用 trigger 检测障碍物（不是预测性 lookahead），只是通�
 
 - `SeahorseRaceTrack._obstacles`: `List<SeahorseRaceTrackObstacles>`（按区块分组）
 - `SeahorseRaceTrackObstacles._obstacles`: `List<SeahorseRaceTrackObstacle>`（单个障碍物列表）
+- `SeahorseRaceTrackObstacles.Init(index, type)`: 遍历子障碍物，调用 `obstacle.Init()` 获取 bool，通过 `SetActive(bool)` 激活/禁用，清除 offset 0x20 字段
 - 障碍物沿 x 轴排列（正方向前进），z 轴区分赛道
-- 赛道间距：z=5 和 z=13（观测值）
+- 赛道间距：z=5, 7, 9, 11, 13（观测值，取决于赛道类型和 lane 数量）
 - 障碍物间距约 10 单位（1313, 1323, 1333, 1343...）
-- 每场比赛约 180 个障碍物
+- 场景中约 80 个 `SeahorseRaceTrackObstacle` 对象（`FindObjectsOfType` 返回数），跨赛道/场次复用
+- **障碍物复用机制**：同一批 GameObject 在不同场次出现在不同 x 坐标（第一场 x=1912~2063 vs 第三场 x=1312~1342），通过 `Init` 重新配置。详见上方「不要缓存障碍物的 collider.bounds」
 
 ## 调试 & 场景切换
 

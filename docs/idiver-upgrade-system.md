@@ -247,8 +247,11 @@ IntegratedItem item = dm.GetIntegratedItem(tid);  // CallerCount=117, 非 virtua
 | 101 | 戴夫移速强化 | +5% | 5级 | 5000×level | BuffDataContainer.AddMoveSpeedParam | diving_suit 图标 |
 | 102 | 推进器速度强化 | +5% | 5级 | 5000×level | 每帧从 spec base 设目标值 | `Booster_Thumbnail` |
 | 103 | 推进器持续时间强化 | +10s | 5级 | 5000g | 逐帧 drain 补偿 | `Booster_Thumbnail` |
+| 104 | 渔笼数量强化 | +1 渔笼 | 5级 | 10000g | delta 跟踪 AvailableCrabTrapCount | crab_trap 图标 |
+| 105 | 渔笼效率强化 | -1s 捕获时间 | 5级 | 10000g | CrabTrapObject.Update Prefix 减 targetTime | crab_trap 图标 |
+| 106 | 无人机次数强化 | +1 无人机 | 10级 | 10000g | DroneCount 状态聚合 + delta 跟踪 | drone 图标 |
 
-TID 范围：SubEquipBaseTID = 9900000/9900100/9900200/9900300, IntItemBaseTID = 9990000/9990100/9990200/9990300
+TID 范围：SubEquipBaseTID = 9900000~9900600, IntItemBaseTID = 9990000~9990600（每类间隔 100）
 
 ## 效果实现架构
 
@@ -295,6 +298,42 @@ TID 范围：SubEquipBaseTID = 9900000/9900100/9900200/9900300, IntItemBaseTID =
 - **方式**: 逐帧检测 `remainTime` 减少量，回补 `drained * bonus / (baseDuration + bonus)`
 - **公式**: 使有效消耗速率 = `drained * baseDuration / totalDuration`，总持续时间 = baseDuration + bonus
 - **⚠️ 关键**: 分母必须是 `baseDuration + bonus`，不能是 `baseDuration`！否则当 `bonus > baseDuration` 时补偿超过消耗 → 无限续航
+
+#### Crab Trap Count (TypeId=104)
+- **方式**: `PlayerCharacter.Update` Prefix 中 delta 跟踪 `AvailableCrabTrapCount`
+- **原理**: `AvailableCrabTrapCount` getter/setter 均 CallerCount=0（auto-property，IL2CPP 内联），不能 Harmony patch。改用跟踪上次应用的 bonus delta，level 变化时调整 backing field
+- **公式**: `player.AvailableCrabTrapCount += (newBonus - lastBonus)`
+
+#### Crab Trap Efficiency (TypeId=105)
+- **方式**: `CrabTrapObject.Update` (CallerCount=0) Prefix 中减少 `targetTime`
+- **原理**: `targetTime` (offset 0x64) 由 `GameConstValueInfo.CrabTrapCatchDelay_Sec` 在 Init (CallerCount=1, 内联) 中设置。每帧检查并减少，clamp 最小 1s
+- **访问**: 通过 `IL2CPP.Il2CppObjectBaseToPtrNotNull` + unsafe 指针偏移 0x64 直接读写 float
+
+#### Drone Count (TypeId=106)
+- **方式**: delta 跟踪 `AvailableLiftDroneCount`（同 Crab Trap Count）
+- **⚠️ 不能同时用 DroneCountFunc + delta 跟踪**: 若在 SubEquipment 构造时设 `droneCount: level`，`EquipSubEquip→AddStatus→MakeStatusDic` 会将其聚合到 `BaseStatus[dronecount=13]`，`PlayerCharacter.Init()` 读取后已包含我们的加成；Update 的 delta 跟踪又会再加一次 → **双重计数**。必须只选一种。选 delta 跟踪以保持与 Crab Trap Count 一致
+
+### 无人机/蟹笼数量系统
+
+无人机和蟹笼数量通过 SubEquipment → StatusManager 聚合管线设置：
+
+```
+SubEquipment.DroneCount (offset 0x54, int)
+  ↓ MakeStatusDic() 提取（int→float）
+BaseStatus.m_TotalStatus[StatusDefine.dronecount=13]
+  ↓ PlayerCharacter.Init() 读取
+StatusManager.GetStatus(player.某字段) → BaseStatus.GetValue(13)
+  ↓ cvttss2si（float→int）
+PlayerCharacter.AvailableLiftDroneCount (offset 0x1D0=464)
+```
+
+TrapCount 同理，key=`StatusDefine.crabTrapcount=14`，offset 0x1D4=468。
+
+**EquipSubEquip 内部自动调用 AddStatus**（ISIL 确认 line 1617），**UnEquipSubEquip 自动调用 RemoveStatus**（line 1795）。因此只要 SubEquipment 的 DroneCount/TrapCount 字段正确，装备/升级时状态聚合自动完成。
+
+**SetCharacterWithPlayerData(keepDroneCount=false)** 会从 SavePlayerData 覆写 AvailableLiftDroneCount（ISIL line 36277: `[r14+464] = [r13+160]`），绕过状态系统。这用于 retry/revive 场景。
+
+**AvailableLiftDroneCount getter/setter**: CallerCount=0（auto-property，IL2CPP 内联），不能 Harmony patch。
 
 ### PlayerCharacter 移动架构
 
@@ -459,3 +498,45 @@ PlayerCharacter.FixedUpdate() (CallerCount=0)
 **潜在风险**：按照 IL2CPP virtual 方法 patch 规则，如果有兄弟子类也实现了这些方法，可能导致 trampoline 崩溃。CallerCount=0 意味着仅通过 vtable 调用，影响范围相对有限。但未来游戏更新如果添加新的 scroll panel 子类，可能触发问题。
 
 **缓解**：这两个 Patch 的 Postfix 都以 type check 开头（`if ((int)type != CustomType) return;`），不会影响正常装备类型的显示。如果未来出现崩溃，备选方案是改用 `FindObjectOfType<LobbyEquipUpgradeScrollPanel>()` 在 `SubEquipmentManager.Init` Postfix 中直接操作。
+
+## 渔笼（CrabTrap）系统逆向
+
+### 渔笼数量机制
+
+- **`DR.SubEquipment.TrapCount`** (offset 0x58=88) — 渔笼装备数据表中的 trapCount 字段
+- **`PlayerCharacter.AvailableCrabTrapCount`** (backing field offset 0x1D4=468) — 运行时可用渔笼数
+- **`PlayerCharacter.IsCrabTrapAvailable`** — 简单比较 `AvailableCrabTrapCount > 0`
+- getter/setter 都是 CallerCount=0 auto-property，IL2CPP 内联为 `mov eax,[rcx+1D4h]; ret` / `mov [rcx+1D4h],edx; ret`，**不可 Harmony patch**
+- 放置渔笼：`CrabTrapZone.SuccessInteract` → 饵料面板回调 `<SuccessInteract>b__0(lvl)` → `SetUpCrabTrap(baitLvl)` → 内联 `dec [player+0x1D4]`（`AvailableCrabTrapCount--`）
+- **游戏延迟初始化**：PlayerCharacter 创建后首帧 Update 时 count 仍为 0，游戏在某个后续时机从 SubEquipment.TrapCount 设置基础值。修改此值必须使用 overwrite-detection 模式
+
+### 渔笼等待时间机制
+
+- **`GameConstValueInfo.CrabTrapCatchDelay_Sec`** — 全局常量，int 类型，**基础值 = 60 秒**
+- 通过 `Singleton<DataManager>._instance.GameConstValue.CrabTrapCatchDelay_Sec` 访问
+- **`CrabTrapObject`** 关键字段（IL2CPP 对象偏移）：
+  - `+0x40` (64) — `onretrieve` (Action callback)
+  - `+0x48` (72) — `state` (int, CrabTrapState enum: None=0, SetUp=1, Completed=2, Retrieve=3)
+  - `+0x50` (80) — `setTime` (DateTime)
+  - `+0x58` (88) — `onTriggerAction` (event handler)
+  - `+0x60` (96) — `elapsedTime` (float, 累计 deltaTime)
+  - `+0x64` (100) — `targetTime` (float, 从 CrabTrapCatchDelay_Sec 转 float)
+  - `+0x68` (104) — `TID` (int)
+  - `+0x6C` (108) — `baitLv` (int)
+- **`CrabTrapObject.Init(TID, baitLv, setTime, onretrieve)`** (CallerCount=1, **被 IL2CPP 内联，不可 patch**):
+  - 读取 `CrabTrapCatchDelay_Sec` → int→float → 存入 targetTime
+- **`CrabTrapObject.Update()`** (CallerCount=0, **安全可 patch**):
+  - state==SetUp 时累加 `elapsedTime += Time.deltaTime`
+  - `elapsedTime >= targetTime` → `ChangeState(Completed)` → 渔笼可交互领取
+- 效率升级通过 Prefix 修改 targetTime 实现，每帧幂等设置 `targetTime = max(1, base - level * reduction)`
+
+### Overwrite-Detection 模式（用于 AvailableCrabTrapCount / AvailableLiftDroneCount）
+
+游戏在 PlayerCharacter 创建后的某个不确定时机初始化 `AvailableCrabTrapCount`，会覆写我们在 Update 中添加的 bonus。简单的"只触发一次的 delta 跟踪"不可靠。
+
+**解决方案**：追踪 `_expectedCount`（上帧设置的值），每帧检测：
+1. `current == expected` → 无变化，跳过
+2. `current == expected - 1` → 放置消耗（dec by 1），bonus 仍在，仅更新 expected
+3. 其他差值 → 游戏覆写（init），重置 `_lastBonus = 0` → 下次循环重新加 bonus
+
+新 PlayerCharacter 实例检测（`__instance != _lastPlayer`）→ 全部重置。

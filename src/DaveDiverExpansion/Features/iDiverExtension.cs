@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BepInEx.Configuration;
 using DaveDiverExpansion.Helpers;
 using HarmonyLib;
+using Il2CppInterop.Runtime;
 using UnityEngine;
 
 namespace DaveDiverExpansion.Features;
@@ -33,6 +34,7 @@ public static class iDiverExtension
         public StatusDefine StatusType; // UI status icon/label type
         public SubEquipmentType IconSource; // which game type to copy icon from
         public string IconSpriteName;       // if set, load sprite by name instead of IconSource
+        public Func<int, int> DroneCountFunc; // level => droneCount (null = 0)
     }
 
     private static readonly UpgradeDef[] Upgrades =
@@ -94,6 +96,52 @@ public static class iDiverExtension
             StatusType = StatusDefine.damage,
             IconSource = SubEquipmentType.o2_tank,
             IconSpriteName = "Booster_Thumbnail",
+        },
+        new()
+        {
+            TypeId = 104,
+            SubEquipBaseTID = 9900400,
+            IntItemBaseTID = 9990400,
+            MaxLevel = 5,
+            PriceFunc = level => 5000 * level,
+            NameKey = "Crab Trap Count Enhancement",
+            StatusLabelKey = "Trap Count",
+            ValueSuffix = "",
+            ValueFunc = level => level,            // +1 per level
+            StatusType = StatusDefine.crabTrapcount,
+            IconSource = SubEquipmentType.crab_trap,
+        },
+        new()
+        {
+            TypeId = 105,
+            SubEquipBaseTID = 9900500,
+            IntItemBaseTID = 9990500,
+            MaxLevel = 6,
+            PriceFunc = level => 5000 * level,
+            NameKey = "Crab Trap Efficiency Enhancement",
+            StatusLabelKey = "Catch Time",
+            ValueSuffix = "s",
+            ValueFunc = level => -level * 10,      // -10s per level
+            StatusType = StatusDefine.crabTrapcount,
+            IconSource = SubEquipmentType.crab_trap,
+        },
+        new()
+        {
+            TypeId = 106,
+            SubEquipBaseTID = 9900600,
+            IntItemBaseTID = 9990600,
+            MaxLevel = 10,
+            PriceFunc = level => 10000,
+            NameKey = "Drone Count Enhancement",
+            StatusLabelKey = "Drone",
+            ValueSuffix = "",
+            ValueFunc = level => level,            // +1 per level
+            StatusType = StatusDefine.dronecount,
+            IconSource = SubEquipmentType.drone,
+            // NOT using DroneCountFunc — bonus applied via delta tracking in Update
+            // (same as Crab Trap Count). DroneCountFunc would cause double counting:
+            // once via EquipSubEquip→AddStatus→MakeStatusDic→BaseStatus, and again
+            // via Update delta tracking.
         },
     };
 
@@ -206,6 +254,7 @@ public static class iDiverExtension
         EnsureTemplate();
         int tid = def.SubEquipBaseTID + level;
         int price = level == 0 ? 0 : (DebugCheapUpgrades ? 1 : def.PriceFunc(level));
+        int droneCount = def.DroneCountFunc?.Invoke(level) ?? 0;
 
         return new DR.SubEquipment(
             tID: tid,
@@ -221,7 +270,7 @@ public static class iDiverExtension
             lootboxWeight: 0f,
             overwightThreshold: 0f,
             equipmentItemID: def.IntItemBaseTID + level,
-            droneCount: 0,
+            droneCount: droneCount,
             trapCount: 0
         );
     }
@@ -690,13 +739,40 @@ public static class iDiverExtension
         // Last known remainTime per slot index, used to detect active drain
         private static readonly Dictionary<int, float> _lastRemainTime = new();
 
+        // Track bonus + expected count for AvailableCrabTrapCount overwrite detection
+        private static int _lastTrapBonus;
+        private static int _expectedTrapCount = -1;
+        private static bool _loggedTrapCount;
+
+        // Track bonus + expected count for AvailableLiftDroneCount overwrite detection
+        private static int _lastDroneBonus;
+        private static int _expectedDroneCount = -1;
+        private static bool _loggedDroneCount;
+
+        // Detect new PlayerCharacter instance (new dive) → reset per-dive tracking
+        private static PlayerCharacter _lastPlayer;
+
         static void Prefix(PlayerCharacter __instance)
         {
             try
             {
+                // Reset per-dive state when PlayerCharacter instance changes (new dive)
+                if (__instance != _lastPlayer)
+                {
+                    _lastPlayer = __instance;
+                    _lastTrapBonus = 0;
+                    _expectedTrapCount = -1;
+                    _loggedTrapCount = false;
+                    _lastDroneBonus = 0;
+                    _expectedDroneCount = -1;
+                    _loggedDroneCount = false;
+                }
+
                 DebugSpawnBooster(__instance);
                 ApplyMoveSpeed(__instance);
                 ApplyBoosterEffects(__instance);
+                ApplyCrabTrapCount(__instance);
+                ApplyDroneCount(__instance);
             }
             catch (Exception ex)
             {
@@ -866,6 +942,149 @@ public static class iDiverExtension
 
                     _lastRemainTime[i] = slot.remainTime;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Crab trap count: +1 available trap per level.
+        /// AvailableCrabTrapCount getter/setter are both CallerCount=0 (IL2CPP-inlined).
+        /// The game sets the base count from SubEquipment.TrapCount at some point after
+        /// PlayerCharacter creation (possibly after the first Update frame). We track
+        /// the expected count and detect when the game overwrites our value (init) vs
+        /// normal decrements (trap placement), re-applying the bonus as needed.
+        /// </summary>
+        private static void ApplyCrabTrapCount(PlayerCharacter player)
+        {
+            int wantBonus = _enabled?.Value == true ? GetLevel(Upgrades[4]) : 0;
+            int current = player.AvailableCrabTrapCount;
+
+            // Detect if game overwrote our value (e.g., dive init setting base count)
+            if (_expectedTrapCount >= 0 && current != _expectedTrapCount)
+            {
+                int diff = _expectedTrapCount - current;
+                if (diff == 1)
+                {
+                    // Trap placement (dec by 1) — our bonus is still in effect
+                }
+                else
+                {
+                    // Game overwrite (init or other) — our bonus was lost
+                    _lastTrapBonus = 0;
+                }
+            }
+
+            // Apply/adjust bonus
+            int delta = wantBonus - _lastTrapBonus;
+            if (delta != 0)
+            {
+                player.AvailableCrabTrapCount = current + delta;
+                _lastTrapBonus = wantBonus;
+                if (!_loggedTrapCount)
+                {
+                    Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: bonus={wantBonus}, delta={delta}, {current}→{player.AvailableCrabTrapCount}");
+                    _loggedTrapCount = true;
+                }
+            }
+
+            _expectedTrapCount = player.AvailableCrabTrapCount;
+        }
+
+        /// <summary>
+        /// Drone count: +1 available drone per level.
+        /// Same approach as crab trap count — delta tracking on the backing field.
+        /// We intentionally do NOT set SubEquipment.DroneCount (DroneCountFunc=null)
+        /// to avoid double counting via EquipSubEquip→AddStatus→MakeStatusDic.
+        /// </summary>
+        private static void ApplyDroneCount(PlayerCharacter player)
+        {
+            int wantBonus = _enabled?.Value == true ? GetLevel(Upgrades[6]) : 0;
+            int current = player.AvailableLiftDroneCount;
+
+            // Detect game overwrite (same pattern as crab trap)
+            if (_expectedDroneCount >= 0 && current != _expectedDroneCount)
+            {
+                int diff = _expectedDroneCount - current;
+                if (diff != 1)
+                    _lastDroneBonus = 0;
+            }
+
+            int delta = wantBonus - _lastDroneBonus;
+            if (delta != 0)
+            {
+                player.AvailableLiftDroneCount = current + delta;
+                _lastDroneBonus = wantBonus;
+                if (!_loggedDroneCount)
+                {
+                    Plugin.Log.LogInfo($"[iDiverExt] DroneCount: bonus={wantBonus}, delta={delta}, {current}→{player.AvailableLiftDroneCount}");
+                    _loggedDroneCount = true;
+                }
+            }
+
+            _expectedDroneCount = player.AvailableLiftDroneCount;
+        }
+    }
+
+    /// <summary>
+    /// Crab trap efficiency: reduce catch delay by 1s per level.
+    /// CrabTrapObject.Update() (CallerCount=0) checks state==SetUp, accumulates
+    /// elapsedTime, and transitions to Completed when elapsedTime >= targetTime.
+    /// targetTime (offset 0x64) is set from GameConstValueInfo.CrabTrapCatchDelay_Sec
+    /// in Init (CallerCount=1, inlined — can't patch Init directly).
+    /// We read the base delay from DataManager.GameConstValue.CrabTrapCatchDelay_Sec
+    /// and set targetTime = base - level (idempotent, safe to call every frame).
+    /// </summary>
+    [HarmonyPatch(typeof(CrabTrapObject), nameof(CrabTrapObject.Update))]
+    static class CrabTrapEfficiency_Patch
+    {
+        private static bool _logged;
+        private static int _cachedBaseDelay; // cached from GameConstValueInfo
+
+        static void Prefix(CrabTrapObject __instance)
+        {
+            if (_enabled?.Value != true) return;
+
+            int level = GetLevel(Upgrades[5]); // Crab Trap Efficiency Enhancement
+            if (level <= 0) return;
+
+            try
+            {
+                // Read and cache the base catch delay from game data
+                if (_cachedBaseDelay <= 0)
+                {
+                    var dm = Singleton<DataManager>._instance;
+                    if (dm == null) return;
+                    var constVal = dm.GameConstValue;
+                    if (constVal == null) return;
+                    _cachedBaseDelay = constVal.CrabTrapCatchDelay_Sec;
+                    Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCatchDelay_Sec base value = {_cachedBaseDelay}s");
+                }
+
+                // Match UpgradeDef.ValueFunc: -10s per level
+                float wantTarget = Math.Max(1f, _cachedBaseDelay - level * 10f);
+
+                var ptr = IL2CPP.Il2CppObjectBaseToPtrNotNull(__instance);
+                if (ptr == IntPtr.Zero) return;
+
+                unsafe
+                {
+                    float* targetTimePtr = (float*)((nint)ptr + 0x64);
+                    float current = *targetTimePtr;
+
+                    // Idempotent: only write if different from desired value
+                    if (Math.Abs(current - wantTarget) > 0.01f)
+                    {
+                        *targetTimePtr = wantTarget;
+                        if (!_logged)
+                        {
+                            Plugin.Log.LogInfo($"[iDiverExt] CrabTrapEfficiency: level={level}, base={_cachedBaseDelay}s, target={wantTarget}s (was {current}s)");
+                            _logged = true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"[iDiverExt] CrabTrapEfficiency error: {ex.Message}");
             }
         }
     }

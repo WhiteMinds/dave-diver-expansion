@@ -33,6 +33,9 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
   - Auto acceleration — maintains optimal gauge speed (avoids overrun)
   - Auto dodge — detects obstacles and triggers jump/crawl with precise timing
   - Auto tag — uses tag input for speed boosts and relay handoffs (waits for Perfect timing)
+- **Betting Expansion** — Expands casino mini-game betting options from 10/50/100 to 10/50/100/500/1000/5000
+  - Applies to all standard casino games: Match Game, Hermit Crab, Shark Teeth
+  - Does not affect Balatro (which has its own betting system)
 - **Quick Scene Switch** — Press F2 to open the scene-switch menu from anywhere (no need to walk to the exit)
   - Works in any non-dive scene (Lobby, Sushi Bar, Farm, etc.)
   - Same menu as the native exit trigger, with all unlocked destinations
@@ -121,6 +124,12 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `Enabled` | `false` | Automatically control seahorse during racing |
+
+**BettingExpansion**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Enabled` | `true` | Expand casino mini-game betting from 10/50/100 to 10/50/100/500/1000/5000 |
 
 ---
 

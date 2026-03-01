@@ -360,7 +360,7 @@ public static class ConfigUI
         }
 
         // Display in explicit order; any unknown sections appended at the end
-        var sectionOrder = new[] { "ConfigUI", "QuickSceneSwitch", "AutoPickup", "DiveMap", "AutoSeahorseRace", "iDiverExtension", "Debug" };
+        var sectionOrder = new[] { "ConfigUI", "QuickSceneSwitch", "AutoPickup", "DiveMap", "AutoSeahorseRace", "BettingExpansion", "iDiverExtension", "Debug" };
         var ordered = new List<KeyValuePair<string, List<ConfigEntryBase>>>();
         foreach (var name in sectionOrder)
         {

@@ -61,7 +61,8 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
     │   ├── DiveMap.cs             # 潜水地图 HUD (M 键大地图 + 缩放拖拽, 小地图可配置位置)
     │   ├── QuickSceneSwitch.cs    # 快速场景切换 (F2)
     │   ├── AutoSeahorseRace.cs    # 海马赛自动操作
-    │   └── iDiverExtension.cs     # iDiver 自定义升级项
+    │   ├── iDiverExtension.cs     # iDiver 自定义升级项
+    │   └── BettingExpansion.cs    # 娱乐场下注金额扩展
     └── Helpers/
         ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期补丁
         ├── I18n.cs                # 国际化 + SaveSystem API 语言检测
@@ -113,7 +114,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 
 - 所有配置通过 BepInEx `ConfigFile` 管理，自动生成 `.cfg` 文件
 - 内置 uGUI 配置面板（F1 打开），自动发现所有 `ConfigEntry`，语言切换即时生效
-- Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `iDiverExtension` → `AutoSeahorseRace` → `Debug`
+- Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `AutoSeahorseRace` → `iDiverExtension` → `BettingExpansion` → `Debug`
 - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown（选项文本经 `I18n.T()` 翻译）
 - Section 内条目排序：通过 `ConfigUI.RebuildEntries` 中的 `entryOrder` 字典控制 UI 显示顺序（不依赖 cfg 文件中的 bind 顺序）
 - uGUI 开发踩坑记录：[docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md)

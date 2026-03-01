@@ -25,23 +25,9 @@ public static class AutoSeahorseRace
     // At 60fps max-speed the racer moves ~0.02 units/frame, so 0.1 ≈ 5 frames buffer.
     private const float DodgeBuffer = 0.1f;
 
-    // Cached obstacle data, refreshed once per race
-    private static ObstacleInfo[] _cachedObstacles;
-    private static bool _obstaclesCached;
-
     // Racer collider half-width along x-axis (cached once per race)
     private static float _racerHalfX;
     private static bool _racerHalfCached;
-
-
-    /// <summary>
-    /// Pre-computed obstacle data: position + trigger collider leading edge.
-    /// </summary>
-    private struct ObstacleInfo
-    {
-        public SeahorseRaceTrackObstacle obstacle;
-        public float triggerLeadingEdgeX; // bounds.min.x of the trigger collider
-    }
 
     public static void Init(ConfigFile config)
     {
@@ -102,48 +88,14 @@ public static class AutoSeahorseRace
     }
 
     /// <summary>
-    /// Caches all obstacles with their trigger collider leading edge (bounds.min.x).
-    /// This tells us the exact x-position where the racer's collider front will first overlap.
-    /// Dodge point = triggerLeadingEdgeX - racerHalfX - DodgeBuffer
-    /// </summary>
-    private static void CacheObstacles()
-    {
-        var raw = Object.FindObjectsOfType<SeahorseRaceTrackObstacle>();
-        if (raw == null || raw.Length == 0)
-        {
-            _cachedObstacles = new ObstacleInfo[0];
-            _obstaclesCached = true;
-            return;
-        }
-
-        _cachedObstacles = new ObstacleInfo[raw.Length];
-        for (int i = 0; i < raw.Length; i++)
-        {
-            var obs = raw[i];
-            var col = obs.GetComponent<Collider>();
-            // Use collider bounds.min.x as the leading edge facing the racer.
-            // If no collider found, fall back to transform.position.x
-            float leadingX = col != null ? col.bounds.min.x : obs.transform.position.x;
-            _cachedObstacles[i] = new ObstacleInfo
-            {
-                obstacle = obs,
-                triggerLeadingEdgeX = leadingX,
-            };
-        }
-        _obstaclesCached = true;
-        Plugin.Log.LogInfo($"AutoSeahorseRace: Cached {raw.Length} obstacles with collider bounds");
-    }
-
-    /// <summary>
-    /// Finds the nearest obstacle ahead using collider-based trigger distance.
-    /// The racer's collider front = racerPos.x + racerHalfX.
-    /// Trigger fires when racerFront >= obstacle.bounds.min.x.
-    /// We dodge when racerFront >= obstacle.bounds.min.x - DodgeBuffer.
+    /// Finds the nearest active obstacle ahead using real-time collider bounds.
+    /// Reads collider.bounds.min.x every frame instead of caching, because
+    /// different races reuse obstacle GameObjects at different positions.
     /// </summary>
     private static SeahorseRaceTrackObstacle FindObstacleAhead(SeahorseRacer racer)
     {
-        if (!_obstaclesCached) CacheObstacles();
-        if (_cachedObstacles == null || _cachedObstacles.Length == 0) return null;
+        var allObstacles = Object.FindObjectsOfType<SeahorseRaceTrackObstacle>();
+        if (allObstacles == null || allObstacles.Length == 0) return null;
 
         float racerHalfX = GetRacerHalfX(racer);
         var racerPos = racer.transform.position;
@@ -153,25 +105,27 @@ public static class AutoSeahorseRace
         SeahorseRaceTrackObstacle nearest = null;
         float nearestGap = float.MaxValue;
 
-        for (int i = 0; i < _cachedObstacles.Length; i++)
+        for (int i = 0; i < allObstacles.Length; i++)
         {
-            ref var info = ref _cachedObstacles[i];
-            if (info.obstacle == null || !info.obstacle.gameObject.activeInHierarchy) continue;
+            var obs = allObstacles[i];
+            if (obs == null || !obs.gameObject.activeInHierarchy) continue;
 
             // Only consider obstacles in the same lane (z within ±2 units)
-            float obsZ = info.obstacle.transform.position.z;
+            float obsZ = obs.transform.position.z;
             if (Mathf.Abs(obsZ - racerZ) > 2f) continue;
 
+            // Read real-time collider bounds
+            var col = obs.GetComponent<Collider>();
+            float triggerLeadingX = col != null ? col.bounds.min.x : obs.transform.position.x;
+
             // gap = how far the racer front is from the trigger leading edge
-            // gap > 0 means racer hasn't reached the trigger zone yet
-            // gap <= 0 means racer is inside or past the trigger zone
-            float gap = info.triggerLeadingEdgeX - racerFrontX;
+            float gap = triggerLeadingX - racerFrontX;
 
             // Dodge when the gap is within DodgeBuffer (slightly before trigger fires)
             if (gap > -0.5f && gap < DodgeBuffer && gap < nearestGap)
             {
                 nearestGap = gap;
-                nearest = info.obstacle;
+                nearest = obs;
             }
         }
 
@@ -256,15 +210,13 @@ public static class AutoSeahorseRace
     }
 
     /// <summary>
-    /// Reset obstacle cache when a new race starts.
+    /// Reset state when a new race starts.
     /// </summary>
     [HarmonyPatch(typeof(SeahorseRaceSessionPlay), nameof(SeahorseRaceSessionPlay.Start_Impl))]
     static class SessionStart_Patch
     {
         static void Prefix()
         {
-            _obstaclesCached = false;
-            _cachedObstacles = null;
             _racerHalfCached = false;
         }
     }

@@ -89,12 +89,22 @@ public static class I18n
         ["Movement Speed Enhancement"] = "移动速度强化",
         ["Booster Speed Enhancement"] = "推进器速度强化",
         ["Booster Duration Enhancement"] = "推进器持续时间强化",
+        ["Crab Trap Count Enhancement"] = "渔笼数量强化",
+        ["Crab Trap Efficiency Enhancement"] = "渔笼效率强化",
+        ["Drone Count Enhancement"] = "无人机次数强化",
         ["Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration). Disabling hides the UI and removes effects, but preserves your upgrade levels."] = "启用额外的 iDiver 升级选项（鱼叉伤害、移动速度、推进器速度和持续时间）。关闭后将隐藏 UI 并移除效果，但不会重置已升级的等级。",
         // iDiver status labels
         ["Damage"] = "伤害",
         ["Move Speed"] = "移动速度",
         ["Booster Speed"] = "推进速度",
         ["Duration"] = "持续时间",
+        ["Trap Count"] = "渔笼数量",
+        ["Catch Time"] = "捕获时间",
+        ["Drone"] = "无人机",
+
+        // BettingExpansion
+        ["BettingExpansion"] = "提升娱乐场下注上限",
+        ["Expand casino mini-game betting from 10/50/100 to 10/50/100/500/1000/5000"] = "将娱乐场小游戏下注选项从 10/50/100 扩展为 10/50/100/500/1000/5000",
 
         // Debug entries
         ["Debug"] = "调试",
