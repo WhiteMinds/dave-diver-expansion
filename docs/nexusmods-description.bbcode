@@ -40,6 +40,9 @@ Adds custom upgrade options to the iDiver upgrade panel.
 [*]Movement Speed Enhancement — boost player swim speed per level
 [*]Booster Speed Enhancement — increase booster speed per level
 [*]Booster Duration Enhancement — extend booster duration per level
+[*]Crab Trap Count Enhancement — add extra crab traps per level
+[*]Crab Trap Efficiency Enhancement — reduce crab trap catch delay per level
+[*]Drone Count Enhancement — add extra lift drones per level
 [*]Data-driven design: upgrade levels are saved and persist even when the feature is disabled
 [*]Disabled by default — enable in config panel
 [/list]
@@ -51,6 +54,13 @@ Automatically controls your seahorse during races.
 [*]Auto dodge — detects obstacles and triggers jump/crawl with precise timing
 [*]Auto tag — uses tag input for speed boosts and relay handoffs (waits for Perfect timing)
 [*]Disabled by default — enable in config panel
+[/list]
+
+[b]Betting Expansion[/b]
+Expands casino mini-game betting options from 10/50/100 to 10/50/100/500/1000/5000.
+[list]
+[*]Applies to all standard casino games: Match Game, Hermit Crab, Shark Teeth
+[*]Does not affect Balatro (which has its own betting system)
 [/list]
 
 [b]In-Game Config Panel[/b]
@@ -129,7 +139,7 @@ You can also edit the config file directly:
 
 [b]iDiverExtension[/b]
 [list]
-[*][font=Courier New]Enabled[/font] (default: false) — Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration)
+[*][font=Courier New]Enabled[/font] (default: false) — Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed, booster duration, crab trap count, crab trap efficiency, drone count)
 [/list]
 
 [b]AutoSeahorseRace[/b]
@@ -137,7 +147,21 @@ You can also edit the config file directly:
 [*][font=Courier New]Enabled[/font] (default: false) — Automatically control seahorse during racing
 [/list]
 
+[b]BettingExpansion[/b]
+[list]
+[*][font=Courier New]Enabled[/font] (default: true) — Expand casino mini-game betting from 10/50/100 to 10/50/100/500/1000/5000
+[/list]
+
 [size=3][b]Changelog[/b][/size]
+
+[b]v1.4.0[/b]
+[list]
+[*]New: Betting Expansion — expand casino mini-game betting from [10,50,100] to [10,50,100,500,1000,5000]
+[*]New: iDiver Crab Trap Count Enhancement — +1 crab trap per level
+[*]New: iDiver Crab Trap Efficiency Enhancement — reduce catch delay by 10s per level
+[*]New: iDiver Drone Count Enhancement — +1 drone per level
+[*]New: AutoContinue debug option — auto-load save on title screen (Debug section)
+[/list]
 
 [b]v1.3.0[/b]
 [list]

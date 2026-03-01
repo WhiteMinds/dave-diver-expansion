@@ -37,5 +37,5 @@ internal static class MyPluginInfo
 {
     public const string PLUGIN_GUID = "com.davediver.expansion";
     public const string PLUGIN_NAME = "DaveDiverExpansion";
-    public const string PLUGIN_VERSION = "1.3.0";
+    public const string PLUGIN_VERSION = "1.4.0";
 }

@@ -117,7 +117,7 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `Enabled` | `false` | Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration) |
+| `Enabled` | `false` | Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed, booster duration, crab trap count, crab trap efficiency, drone count) |
 
 **AutoSeahorseRace**
 
