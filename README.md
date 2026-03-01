@@ -23,6 +23,16 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
   - Minimap markers scale with zoom level for consistent visibility
   - ESC closes big map; map hides during cutscenes
   - Auto-disables in Merfolk Village (which has its own map)
+- **iDiver Extension** — Custom upgrade options in the iDiver upgrade panel (disabled by default)
+  - Harpoon Damage Enhancement — increase harpoon damage per level
+  - Movement Speed Enhancement — boost player swim speed per level
+  - Booster Speed Enhancement — increase booster speed per level
+  - Booster Duration Enhancement — extend booster duration per level
+  - Upgrade levels persist even when the feature is disabled
+- **Auto Seahorse Race** — Automatically controls your seahorse during races (disabled by default)
+  - Auto acceleration — maintains optimal gauge speed (avoids overrun)
+  - Auto dodge — detects obstacles and triggers jump/crawl with precise timing
+  - Auto tag — uses tag input for speed boosts and relay handoffs (waits for Perfect timing)
 - **Quick Scene Switch** — Press F2 to open the scene-switch menu from anywhere (no need to walk to the exit)
   - Works in any non-dive scene (Lobby, Sushi Bar, Farm, etc.)
   - Same menu as the native exit trigger, with all unlocked destinations
@@ -97,7 +107,20 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 | `ShowDistantFish` | `false` | Show markers for distant streamed-out fish |
 | `ShowItems` | `false` | Show item markers |
 | `ShowChests` | `false` | Show chest markers |
+| `ShowCrabTraps` | `true` | Show fish trap spot markers |
 | `MarkerScale` | `1.0` | Scale multiplier for all map markers (0.5–3x) |
+
+**iDiverExtension**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Enabled` | `false` | Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration) |
+
+**AutoSeahorseRace**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Enabled` | `false` | Automatically control seahorse during racing |
 
 ---
 

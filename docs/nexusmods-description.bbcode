@@ -33,6 +33,26 @@ Instantly open the scene-switch menu from anywhere — no need to walk to the ex
 [*]Same menu as the native exit trigger, with all unlocked destinations
 [/list]
 
+[b]iDiver Extension[/b]
+Adds custom upgrade options to the iDiver upgrade panel.
+[list]
+[*]Harpoon Damage Enhancement — increase harpoon damage per level
+[*]Movement Speed Enhancement — boost player swim speed per level
+[*]Booster Speed Enhancement — increase booster speed per level
+[*]Booster Duration Enhancement — extend booster duration per level
+[*]Data-driven design: upgrade levels are saved and persist even when the feature is disabled
+[*]Disabled by default — enable in config panel
+[/list]
+
+[b]Auto Seahorse Race[/b]
+Automatically controls your seahorse during races.
+[list]
+[*]Auto acceleration — maintains optimal gauge speed (avoids overrun)
+[*]Auto dodge — detects obstacles and triggers jump/crawl with precise timing
+[*]Auto tag — uses tag input for speed boosts and relay handoffs (waits for Perfect timing)
+[*]Disabled by default — enable in config panel
+[/list]
+
 [b]In-Game Config Panel[/b]
 Press [b]F1[/b] to open a settings UI overlay.
 [list]
@@ -103,10 +123,31 @@ You can also edit the config file directly:
 [*][font=Courier New]ShowDistantFish[/font] (default: false) — Show markers for distant streamed-out fish
 [*][font=Courier New]ShowItems[/font] (default: false) — Show item markers
 [*][font=Courier New]ShowChests[/font] (default: false) — Show chest markers
+[*][font=Courier New]ShowCrabTraps[/font] (default: true) — Show fish trap spot markers
 [*][font=Courier New]MarkerScale[/font] (default: 1.0) — Scale multiplier for all map markers (0.5–3x)
 [/list]
 
+[b]iDiverExtension[/b]
+[list]
+[*][font=Courier New]Enabled[/font] (default: false) — Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration)
+[/list]
+
+[b]AutoSeahorseRace[/b]
+[list]
+[*][font=Courier New]Enabled[/font] (default: false) — Automatically control seahorse during racing
+[/list]
+
 [size=3][b]Changelog[/b][/size]
+
+[b]v1.3.0[/b]
+[list]
+[*]New: iDiver Extension — 4 custom upgrade types in the iDiver panel: Harpoon Damage, Movement Speed, Booster Speed, and Booster Duration (disabled by default)
+[*]New: Auto Seahorse Race — automatically accelerates, dodges obstacles, and uses tags during seahorse races with precise timing (disabled by default)
+[*]DiveMap: Added fish trap spot (crab trap zone) markers — brown squares show where you can place fish traps
+[*]DiveMap: Fixed caught catchable fish (shrimp, seahorse) markers persisting on the map — now correctly detects caught state via activeSelf + parent check
+[*]DiveMap: Ammo boxes now shown with distinct coral-red diamond markers (separate from regular yellow items)
+[*]DiveMap: Updated legend with new marker types (Ammo Box, Trap Spot)
+[/list]
 
 [b]v1.2.1[/b]
 [list]
