@@ -28,6 +28,9 @@ A mod for **Dave the Diver** built on BepInEx 6 + HarmonyX.
   - Movement Speed Enhancement — boost player swim speed per level
   - Booster Speed Enhancement — increase booster speed per level
   - Booster Duration Enhancement — extend booster duration per level
+  - Crab Trap Count / Efficiency Enhancement — more traps, faster catches
+  - Drone Count Enhancement — more lift drones per level
+  - Ecology Protection — multiply fish population per level (×2/×3/×4)
   - Upgrade levels persist even when the feature is disabled
 - **Auto Seahorse Race** — Automatically controls your seahorse during races (disabled by default)
   - Auto acceleration — maintains optimal gauge speed (avoids overrun)
@@ -117,7 +120,8 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `Enabled` | `false` | Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed, booster duration, crab trap count, crab trap efficiency, drone count) |
+| `Enabled` | `false` | Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed, booster duration, crab trap count, crab trap efficiency, drone count, ecology protection) |
+| `FishDensityEnabled` | `true` | Enable fish density enhancement from the Ecology Protection upgrade |
 
 **AutoSeahorseRace**
 

@@ -43,6 +43,7 @@ Adds custom upgrade options to the iDiver upgrade panel.
 [*]Crab Trap Count Enhancement — +1 trap/level, max 5 levels, 5,000–25,000g
 [*]Crab Trap Efficiency Enhancement — −10s catch delay/level, max 6 levels, 5,000–30,000g
 [*]Drone Count Enhancement — +1 drone/level, max 10 levels, 10,000g each
+[*]Ecology Protection — multiply fish population per level (×2/×3/×4), max 3 levels, 20k–500k gold
 [*]Data-driven design: upgrade levels are saved and persist even when the feature is disabled
 [*]Disabled by default — enable in config panel
 [/list]
@@ -139,7 +140,8 @@ You can also edit the config file directly:
 
 [b]iDiverExtension[/b]
 [list]
-[*][font=Courier New]Enabled[/font] (default: false) — Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed, booster duration, crab trap count, crab trap efficiency, drone count)
+[*][font=Courier New]Enabled[/font] (default: false) — Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed, booster duration, crab trap count, crab trap efficiency, drone count, ecology protection)
+[*][font=Courier New]FishDensityEnabled[/font] (default: true) — Enable fish density enhancement from the Ecology Protection upgrade
 [/list]
 
 [b]AutoSeahorseRace[/b]
@@ -153,6 +155,13 @@ You can also edit the config file directly:
 [/list]
 
 [size=3][b]Changelog[/b][/size]
+
+[b]v1.5.0[/b]
+[list]
+[*]New: iDiver Ecology Protection — multiply fish population by upgrading in the iDiver panel (×2/×3/×4, 3 levels, 20k–500k gold). Uses the game's own fish spawning path (DoInstanceFishOrGroup) for fully functional fish groups
+[*]New: FishDensityEnabled sub-config under iDiverExtension — independent toggle for the fish density feature
+[*]Fix: iDiver Drone Count Enhancement not applying correctly — bonus was silently lost when game's base drone count equaled the bonus amount. Now waits for game initialization before applying bonus (also fixes the same edge case for Crab Trap Count)
+[/list]
 
 [b]v1.4.0[/b]
 [list]
