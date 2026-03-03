@@ -249,9 +249,10 @@ IntegratedItem item = dm.GetIntegratedItem(tid);  // CallerCount=117, 非 virtua
 | 103 | 推进器持续时间强化 | +10s | 5级 | 5000g | 逐帧 drain 补偿 | `Booster_Thumbnail` |
 | 104 | 渔笼数量强化 | +1 渔笼 | 5级 | 10000g | delta 跟踪 AvailableCrabTrapCount | crab_trap 图标 |
 | 105 | 渔笼效率强化 | -1s 捕获时间 | 5级 | 10000g | CrabTrapObject.Update Prefix 减 targetTime | crab_trap 图标 |
-| 106 | 无人机次数强化 | +1 无人机 | 10级 | 10000g | DroneCount 状态聚合 + delta 跟踪 | drone 图标 |
+| 106 | 无人机次数强化 | +1 无人机 | 10级 | 10000g | delta 跟踪 AvailableLiftDroneCount | drone 图标 |
+| 107 | 生态保护 | ×(level+1) 鱼群 | 3级 | 20k/100k/500k | FishDensity.OnBoidGroupStarted 读取 | diving_suit 图标 |
 
-TID 范围：SubEquipBaseTID = 9900000~9900600, IntItemBaseTID = 9990000~9990600（每类间隔 100）
+TID 范围：SubEquipBaseTID = 9900000~9900700, IntItemBaseTID = 9990000~9990700（每类间隔 100）
 
 ## 效果实现架构
 
@@ -534,9 +535,17 @@ PlayerCharacter.FixedUpdate() (CallerCount=0)
 
 游戏在 PlayerCharacter 创建后的某个不确定时机初始化 `AvailableCrabTrapCount`，会覆写我们在 Update 中添加的 bonus。简单的"只触发一次的 delta 跟踪"不可靠。
 
-**解决方案**：追踪 `_expectedCount`（上帧设置的值），每帧检测：
-1. `current == expected` → 无变化，跳过
-2. `current == expected - 1` → 放置消耗（dec by 1），bonus 仍在，仅更新 expected
-3. 其他差值 → 游戏覆写（init），重置 `_lastBonus = 0` → 下次循环重新加 bonus
+**解决方案**：base-init 等待 + overwrite detection 两阶段：
 
-新 PlayerCharacter 实例检测（`__instance != _lastPlayer`）→ 全部重置。
+**阶段一：等待游戏初始化 base（`_baseInitialized=false`）**
+- 在 `current==0` 时不应用 bonus，仅设 `_expectedCount=0` 并 return
+- 当 `current>0` 时标记 `_baseInitialized=true`，进入阶段二
+- **⛔ 不能跳过此阶段**：若在 `current=0` 时就加 bonus，且 game base 恰好等于 bonus（如 base=3, bonus=3），游戏覆写后 `expected==current`，overwrite 完全不可见，bonus 被静默吞掉
+
+**阶段二：overwrite detection**
+- 追踪 `_expectedCount`（上帧设置的值），每帧检测：
+  1. `current == expected` → 无变化，跳过
+  2. `current == expected - 1` → 放置/使用消耗（dec by 1），bonus 仍在，仅更新 expected
+  3. 其他差值 → 游戏覆写（init），重置 `_lastBonus = 0` → 下次循环重新加 bonus
+
+新 PlayerCharacter 实例检测（`__instance != _lastPlayer`）→ 全部重置（含 `_baseInitialized`）。

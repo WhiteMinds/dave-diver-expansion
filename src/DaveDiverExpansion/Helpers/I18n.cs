@@ -92,6 +92,7 @@ public static class I18n
         ["Crab Trap Count Enhancement"] = "渔笼数量强化",
         ["Crab Trap Efficiency Enhancement"] = "渔笼效率强化",
         ["Drone Count Enhancement"] = "无人机次数强化",
+        ["Ecology Protection"] = "生态保护",
         ["Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration). Disabling hides the UI and removes effects, but preserves your upgrade levels."] = "启用额外的 iDiver 升级选项（鱼叉伤害、移动速度、推进器速度和持续时间）。关闭后将隐藏 UI 并移除效果，但不会重置已升级的等级。",
         // iDiver status labels
         ["Damage"] = "伤害",
@@ -101,10 +102,15 @@ public static class I18n
         ["Trap Count"] = "渔笼数量",
         ["Catch Time"] = "捕获时间",
         ["Drone"] = "无人机",
+        ["Population"] = "鱼群数量",
 
         // BettingExpansion
         ["BettingExpansion"] = "提升娱乐场下注上限",
         ["Expand casino mini-game betting from 10/50/100 to 10/50/100/500/1000/5000"] = "将娱乐场小游戏下注选项从 10/50/100 扩展为 10/50/100/500/1000/5000",
+
+        // FishDensity (sub-config under iDiverExtension)
+        ["FishDensityEnabled"] = "启用生态保护升级",
+        ["Enable fish density enhancement (multiplier from Ecology Protection upgrade)"] = "启用生态保护升级（通过 iDiver 升级增加鱼群密度）",
 
         // Debug entries
         ["Debug"] = "调试",

@@ -143,6 +143,20 @@ public static class iDiverExtension
             // once via EquipSubEquip→AddStatus→MakeStatusDic→BaseStatus, and again
             // via Update delta tracking.
         },
+        new()
+        {
+            TypeId = 107,
+            SubEquipBaseTID = 9900700,
+            IntItemBaseTID = 9990700,
+            MaxLevel = 3,
+            PriceFunc = level => level switch { 1 => 20000, 2 => 100000, 3 => 500000, _ => 0 },
+            NameKey = "Ecology Protection",
+            StatusLabelKey = "Population",
+            ValueSuffix = "x",
+            ValueFunc = level => level + 1,        // 1x → 2x → 3x → 4x
+            StatusType = StatusDefine.damage,
+            IconSource = SubEquipmentType.diving_suit,
+        },
     };
 
     // Set to true to override all upgrade prices to 1 gold (for testing)
@@ -150,6 +164,7 @@ public static class iDiverExtension
 
     // Config
     private static ConfigEntry<bool> _enabled;
+    private static ConfigEntry<bool> _fishDensityEnabled;
 
     // Cached synthetic objects (created on first access)
     private static readonly Dictionary<int, DR.SubEquipment> _subEquipCache = new();
@@ -169,6 +184,9 @@ public static class iDiverExtension
         _enabled = config.Bind(
             "iDiverExtension", "Enabled", false,
             "Enable extra iDiver upgrade options (harpoon damage, move speed, booster speed & duration). Disabling hides the UI and removes effects, but preserves your upgrade levels.");
+        _fishDensityEnabled = config.Bind(
+            "iDiverExtension", "FishDensityEnabled", true,
+            "Enable fish density enhancement (multiplier from Ecology Protection upgrade)");
 
         Plugin.Log.LogInfo($"iDiverExtension initialized (enabled={_enabled.Value})");
     }
@@ -226,6 +244,17 @@ public static class iDiverExtension
             return Math.Min(tid - def.SubEquipBaseTID, def.MaxLevel);
         }
         catch { return 0; }
+    }
+
+    /// <summary>
+    /// Returns the fish density multiplier from the Ecology Protection upgrade.
+    /// Level 0 → 1 (no extra), level 1 → 2 (double), level 2 → 3 (triple), level 3 → 4 (quadruple).
+    /// Gated by both _enabled and _fishDensityEnabled (like minimap under DiveMap).
+    /// </summary>
+    public static int GetFishDensityMultiplier()
+    {
+        if (!_enabled.Value || !_fishDensityEnabled.Value) return 1;
+        return GetLevel(Upgrades[7]) + 1;
     }
 
     // ========================================================================
@@ -742,12 +771,12 @@ public static class iDiverExtension
         // Track bonus + expected count for AvailableCrabTrapCount overwrite detection
         private static int _lastTrapBonus;
         private static int _expectedTrapCount = -1;
-        private static bool _loggedTrapCount;
+        private static bool _trapBaseInitialized;
 
         // Track bonus + expected count for AvailableLiftDroneCount overwrite detection
         private static int _lastDroneBonus;
         private static int _expectedDroneCount = -1;
-        private static bool _loggedDroneCount;
+        private static bool _droneBaseInitialized;
 
         // Detect new PlayerCharacter instance (new dive) → reset per-dive tracking
         private static PlayerCharacter _lastPlayer;
@@ -762,10 +791,10 @@ public static class iDiverExtension
                     _lastPlayer = __instance;
                     _lastTrapBonus = 0;
                     _expectedTrapCount = -1;
-                    _loggedTrapCount = false;
+                    _trapBaseInitialized = false;
                     _lastDroneBonus = 0;
                     _expectedDroneCount = -1;
-                    _loggedDroneCount = false;
+                    _droneBaseInitialized = false;
                 }
 
                 DebugSpawnBooster(__instance);
@@ -958,6 +987,19 @@ public static class iDiverExtension
             int wantBonus = _enabled?.Value == true ? GetLevel(Upgrades[4]) : 0;
             int current = player.AvailableCrabTrapCount;
 
+            // Wait for game to initialize the base count (same as drone)
+            if (!_trapBaseInitialized)
+            {
+                if (current == 0)
+                {
+                    _expectedTrapCount = 0;
+                    return;
+                }
+                _trapBaseInitialized = true;
+                _lastTrapBonus = 0;
+                Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: game base initialized to {current}");
+            }
+
             // Detect if game overwrote our value (e.g., dive init setting base count)
             if (_expectedTrapCount >= 0 && current != _expectedTrapCount)
             {
@@ -969,6 +1011,7 @@ public static class iDiverExtension
                 else
                 {
                     // Game overwrite (init or other) — our bonus was lost
+                    Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: OVERWRITE detected, expected={_expectedTrapCount}, current={current}, diff={diff}, resetting lastBonus from {_lastTrapBonus} to 0");
                     _lastTrapBonus = 0;
                 }
             }
@@ -977,13 +1020,9 @@ public static class iDiverExtension
             int delta = wantBonus - _lastTrapBonus;
             if (delta != 0)
             {
+                Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: applying bonus={wantBonus}, delta={delta}, {current}→{current + delta}");
                 player.AvailableCrabTrapCount = current + delta;
                 _lastTrapBonus = wantBonus;
-                if (!_loggedTrapCount)
-                {
-                    Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: bonus={wantBonus}, delta={delta}, {current}→{player.AvailableCrabTrapCount}");
-                    _loggedTrapCount = true;
-                }
             }
 
             _expectedTrapCount = player.AvailableCrabTrapCount;
@@ -1000,24 +1039,44 @@ public static class iDiverExtension
             int wantBonus = _enabled?.Value == true ? GetLevel(Upgrades[6]) : 0;
             int current = player.AvailableLiftDroneCount;
 
+            // Wait for game to initialize the base count before applying bonus.
+            // The game sets AvailableLiftDroneCount from SubEquipment.DroneCount at some
+            // point after PlayerCharacter creation. If we apply bonus while current=0,
+            // the game's base init can silently overwrite us (especially when base == bonus).
+            if (!_droneBaseInitialized)
+            {
+                if (current == 0)
+                {
+                    _expectedDroneCount = 0;
+                    return;
+                }
+                _droneBaseInitialized = true;
+                _lastDroneBonus = 0;
+                Plugin.Log.LogInfo($"[iDiverExt] DroneCount: game base initialized to {current}");
+            }
+
             // Detect game overwrite (same pattern as crab trap)
             if (_expectedDroneCount >= 0 && current != _expectedDroneCount)
             {
                 int diff = _expectedDroneCount - current;
-                if (diff != 1)
+                if (diff == 1)
+                {
+                    // Drone usage (dec by 1) — our bonus is still in effect
+                }
+                else
+                {
+                    // Game overwrite (init or other) — our bonus was lost
+                    Plugin.Log.LogInfo($"[iDiverExt] DroneCount: OVERWRITE detected, expected={_expectedDroneCount}, current={current}, diff={diff}, resetting lastBonus from {_lastDroneBonus} to 0");
                     _lastDroneBonus = 0;
+                }
             }
 
             int delta = wantBonus - _lastDroneBonus;
             if (delta != 0)
             {
+                Plugin.Log.LogInfo($"[iDiverExt] DroneCount: applying bonus={wantBonus}, delta={delta}, {current}→{current + delta}");
                 player.AvailableLiftDroneCount = current + delta;
                 _lastDroneBonus = wantBonus;
-                if (!_loggedDroneCount)
-                {
-                    Plugin.Log.LogInfo($"[iDiverExt] DroneCount: bonus={wantBonus}, delta={delta}, {current}→{player.AvailableLiftDroneCount}");
-                    _loggedDroneCount = true;
-                }
             }
 
             _expectedDroneCount = player.AvailableLiftDroneCount;

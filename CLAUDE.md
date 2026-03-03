@@ -62,6 +62,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
     │   ├── QuickSceneSwitch.cs    # 快速场景切换 (F2)
     │   ├── AutoSeahorseRace.cs    # 海马赛自动操作
     │   ├── iDiverExtension.cs     # iDiver 自定义升级项
+    │   ├── FishDensity.cs         # 鱼群密度增强（iDiver 生态保护升级驱动）
     │   └── BettingExpansion.cs    # 娱乐场下注金额扩展
     └── Helpers/
         ├── EntityRegistry.cs      # 共享实体注册表 + 生命周期补丁
@@ -109,12 +110,15 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 - **⛔ 不要 Harmony patch 序列化数据类的自动属性 getter**（如 `SaveUserOptions.get_CurrentLanguage`）——IL2CPP 会复用 getter 进行无关字段偏移读取，Postfix 收到大量垃圾值。获取游戏语言用 `Singleton<SaveSystem>._instance.UserOptionManager.CurrentLanguage`（详见 [docs/game-classes.md](docs/game-classes.md) § 游戏语言系统）
 - **鱼的死亡/捕获检测**：击杀走 `DisableInteraction()` → `IsEnableInteraction=false`；捕获可捕捉鱼（虾/海马）只对自身 `SetActive(false)` 而不调 `DisableInteraction`，需用 `!activeSelf && parent.activeSelf` 区分捕获和 streaming-out（详见 [docs/game-classes.md](docs/game-classes.md) § 鱼的死亡/捕获状态检测）
 - **⛔ `DelegateSupport.ConvertDelegate` 不可用于 UIDataText.OverrideTextFunc**——创建的 IL2CPP 委托对象非 null，但 native 代码调用时返回空值。覆盖 UIDataText 文本的正确做法：`uiDataText.enabled = false`（禁用 Refresh）+ 直接设 `TMP_Text.text`。复用面板需在 Prefix 恢复 `enabled = true`（详见 [docs/idiver-upgrade-system.md](docs/idiver-upgrade-system.md) § 4.2）
+- **CallerCount 只影响 Harmony patch，不影响 interop 调用** — CallerCount>0 的方法不能 patch（被内联），但通过 interop 属性/方法**直接调用**始终走 `il2cpp_runtime_invoke`，与内联无关。不要因为一个方法"不能 patch"就排除"调用"它
+- **⛔ `Object.Instantiate(运行时实例)` 会复制 IL2CPP native 状态** — 克隆的组件携带原始对象的初始化标志和 native 指针，导致 AI/协程等无法正确重新初始化。要创建功能正常的游戏对象，必须从 **prefab** 实例化（如调用游戏自身的工厂方法），而非克隆已运行的实例
 
 ## 配置系统
 
 - 所有配置通过 BepInEx `ConfigFile` 管理，自动生成 `.cfg` 文件
 - 内置 uGUI 配置面板（F1 打开），自动发现所有 `ConfigEntry`，语言切换即时生效
-- Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `AutoSeahorseRace` → `iDiverExtension` → `BettingExpansion` → `Debug`
+- Section 顺序：`ConfigUI` → `QuickSceneSwitch` → `AutoPickup` → `DiveMap` → `AutoSeahorseRace` → `BettingExpansion` → `iDiverExtension` → `Debug`
+- 子功能配置项放在父 section 下（如 `FishDensityEnabled` 在 `iDiverExtension` section 下，类似 DiveMap 下的 MiniMap 配置）
 - 控件类型：`bool` → Toggle，`float`/`int` → Slider，`KeyCode` → "Press any key" 按钮，`enum` → Dropdown（选项文本经 `I18n.T()` 翻译）
 - Section 内条目排序：通过 `ConfigUI.RebuildEntries` 中的 `entryOrder` 字典控制 UI 显示顺序（不依赖 cfg 文件中的 bind 顺序）
 - uGUI 开发踩坑记录：[docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md)
@@ -134,6 +138,8 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 - 所有配置项通过 `config.Bind(section, key, default, description)` 管理
 - 使用 `Plugin.Log` 记录日志（`LogInfo`, `LogWarning`, `LogError`）
 - 代码注释用英文，CLAUDE.md 用中文，README.md 用英文，Git commit 用英文
+- **优先复用游戏自身的代码路径** — 当需要创建/修改游戏对象时，先找到游戏本身用什么 API 完成同样的事（如 `DoInstanceFishOrGroup`），直接调用它；而不是尝试从外部克隆/hack。游戏内部的初始化流程有大量隐式依赖，自己重建这些依赖几乎必然遗漏
+- **切换方案时，先提取当前方案中已验证的结论** — 如果当前方案的核心机制已被验证（如"通过 allocator 重新生成的鱼能正常动"），切换方案时应保留这些结论作为约束，而非从零开始探索
 
 ## 新功能开发工作流
 
