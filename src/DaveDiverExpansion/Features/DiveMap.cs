@@ -612,6 +612,7 @@ public class DiveMapBehaviour : MonoBehaviour
         var camGO = new GameObject("DDE_MapCamera");
         _mapCamera = camGO.AddComponent<Camera>();
         _mapCamera.CopyFrom(mainCam);
+        _mapCamera.rect = new Rect(0, 0, 1, 1); // override letterbox rect from CopyFrom
         _mapCamera.tag = "Untagged";
         _mapCamera.orthographic = true;
         _mapCamera.orthographicSize = _fullOrthoSize;
@@ -951,6 +952,7 @@ public class DiveMapBehaviour : MonoBehaviour
         var scaler = _canvasGO.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
 
         var containerGO = CreateUIObject("MapContainer", _canvasGO);
         _containerRT = containerGO.GetComponent<RectTransform>();
@@ -1023,9 +1025,12 @@ public class DiveMapBehaviour : MonoBehaviour
             _containerRT.anchorMax = new Vector2(0.5f, 0.5f);
             _containerRT.pivot = new Vector2(0.5f, 0.5f);
 
-            float mapH = 1080f * 0.75f;
+            var canvasRT = _canvasGO.GetComponent<RectTransform>();
+            float canvasW = canvasRT.rect.width;
+            float canvasH = canvasRT.rect.height;
+            float mapH = canvasH * 0.75f;
             float mapW = mapH * _levelAspect;
-            if (mapW > 1920f * 0.9f) { mapW = 1920f * 0.9f; mapH = mapW / _levelAspect; }
+            if (mapW > canvasW * 0.9f) { mapW = canvasW * 0.9f; mapH = mapW / _levelAspect; }
             _containerRT.sizeDelta = new Vector2(mapW, mapH);
             _containerRT.anchoredPosition = Vector2.zero;
 
@@ -1079,7 +1084,8 @@ public class DiveMapBehaviour : MonoBehaviour
             _containerRT.anchorMax = new Vector2(ax, ay);
             _containerRT.pivot = new Vector2(ax, ay);
 
-            float mapH = 1080f * DiveMap.MapSize.Value;
+            var canvasRT2 = _canvasGO.GetComponent<RectTransform>();
+            float mapH = canvasRT2.rect.height * DiveMap.MapSize.Value;
             _containerRT.sizeDelta = new Vector2(mapH, mapH);
 
             float ox = DiveMap.MiniMapOffsetX.Value * (ax >= 0.5f ? -1 : 1);

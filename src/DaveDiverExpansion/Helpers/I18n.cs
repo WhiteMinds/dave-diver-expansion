@@ -31,6 +31,8 @@ public static class I18n
         ["AutoPickupFish"] = "自动拾取鱼",
         ["AutoPickupItems"] = "自动拾取物品",
         ["AutoOpenChests"] = "自动开启宝箱",
+        ["AutoPickupAmmoBox"] = "自动拾取弹药箱",
+        ["AutoPickupOxygenBox"] = "自动拾取氧气箱",
         ["PickupRadius"] = "拾取半径",
 
         // ConfigUI entries
@@ -130,6 +132,8 @@ public static class I18n
         ["Auto-pickup dead fish"] = "自动拾取死鱼",
         ["Auto-pickup dropped items"] = "自动拾取掉落物品",
         ["Auto-open treasure chests"] = "自动开启宝箱",
+        ["Auto-pickup ammo boxes"] = "自动拾取弹药箱",
+        ["Auto-pickup oxygen boxes (chests)"] = "自动拾取氧气箱",
         ["Radius around the player to auto-pick items (in game units)"] = "自动拾取物品的范围半径（游戏单位）",
         ["Enable the dive map HUD"] = "启用潜水地图 HUD",
         ["Key to toggle the enlarged map view"] = "切换大地图视图的按键",

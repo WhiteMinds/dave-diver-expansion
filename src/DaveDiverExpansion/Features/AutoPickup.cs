@@ -17,6 +17,8 @@ public static class AutoPickup
     public static ConfigEntry<bool> AutoPickupFish;
     public static ConfigEntry<bool> AutoPickupItems;
     public static ConfigEntry<bool> AutoOpenChests;
+    public static ConfigEntry<bool> AutoPickupAmmoBox;
+    public static ConfigEntry<bool> AutoPickupOxygenBox;
     public static ConfigEntry<float> PickupRadius;
 
     // Track objects being destroyed this frame to avoid double-pickup
@@ -42,6 +44,12 @@ public static class AutoPickup
         AutoOpenChests = config.Bind(
             "AutoPickup", "AutoOpenChests", false,
             "Auto-open treasure chests");
+        AutoPickupAmmoBox = config.Bind(
+            "AutoPickup", "AutoPickupAmmoBox", true,
+            "Auto-pickup ammo boxes");
+        AutoPickupOxygenBox = config.Bind(
+            "AutoPickup", "AutoPickupOxygenBox", true,
+            "Auto-pickup oxygen boxes (chests)");
         PickupRadius = config.Bind(
             "AutoPickup", "PickupRadius", 1f,
             "Radius around the player to auto-pick items (in game units)");
@@ -125,9 +133,10 @@ public static class AutoPickup
                 if (goName.StartsWith("PickupInstance") || goName.Contains("HarpoonHead"))
                     continue;
 
-                // Skip ammo boxes when current gun ammo is full (avoids rapid failed pickup loop)
+                // Skip ammo boxes if disabled, or when current gun ammo is full
                 if (goName.Contains("BulletBox"))
                 {
+                    if (!AutoPickupAmmoBox.Value) continue;
                     var inventory = player.CurrentInstanceItemInventory;
                     var gun = inventory?.gunHandler;
                     if (gun != null && gun.IsBulletFull())
@@ -161,6 +170,14 @@ public static class AutoPickup
                 if (chest.transform.position == Vector3.zero) continue;
                 if (Vector3.Distance(playerPos, chest.transform.position) > radius) continue;
                 if (chest.IsOpen) continue;
+
+                // Skip oxygen boxes if disabled
+                if (!AutoPickupOxygenBox.Value)
+                {
+                    var chestName = chest.gameObject.name;
+                    if (chestName.Contains("O2") || chestName.Contains("ShellFish004"))
+                        continue;
+                }
 
                 chest.SuccessInteract(player);
                 _pendingDestroy.Add(chest.gameObject);
