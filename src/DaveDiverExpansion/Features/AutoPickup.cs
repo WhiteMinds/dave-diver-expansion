@@ -21,6 +21,11 @@ public static class AutoPickup
     public static ConfigEntry<bool> AutoPickupOxygenBox;
     public static ConfigEntry<float> PickupRadius;
 
+    // Oxygen chests spawn an OxygenZone at the chest location; the player must
+    // physically enter the zone to receive oxygen.  A large pickup radius would
+    // open the chest before the player is close enough, wasting it.
+    private const float OxygenChestRadius = 1f;
+
     // Track objects being destroyed this frame to avoid double-pickup
     private static readonly HashSet<GameObject> _pendingDestroy = new();
 
@@ -52,7 +57,8 @@ public static class AutoPickup
             "Auto-pickup oxygen boxes (chests)");
         PickupRadius = config.Bind(
             "AutoPickup", "PickupRadius", 1f,
-            "Radius around the player to auto-pick items (in game units)");
+            "Radius around the player to auto-pick items (in game units). " +
+            "Oxygen boxes always use a fixed 1.0 radius regardless of this setting.");
 
         Plugin.Log.LogInfo($"AutoPickup initialized (enabled={Enabled.Value}, radius={PickupRadius.Value})");
     }
@@ -172,12 +178,15 @@ public static class AutoPickup
                 if (chest.IsOpen) continue;
 
                 // Skip oxygen boxes if disabled
-                if (!AutoPickupOxygenBox.Value)
-                {
-                    var chestName = chest.gameObject.name;
-                    if (chestName.Contains("O2") || chestName.Contains("ShellFish004"))
-                        continue;
-                }
+                var chestName = chest.gameObject.name;
+                bool isOxygen = chestName.Contains("O2") || chestName.Contains("ShellFish004");
+                if (!AutoPickupOxygenBox.Value && isOxygen)
+                    continue;
+
+                // Oxygen chests spawn an OxygenZone trigger at the chest location;
+                // the player must be close enough to enter it, so cap the radius.
+                if (isOxygen && Vector3.Distance(playerPos, chest.transform.position) > OxygenChestRadius)
+                    continue;
 
                 chest.SuccessInteract(player);
                 _pendingDestroy.Add(chest.gameObject);

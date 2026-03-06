@@ -134,7 +134,7 @@ public static class I18n
         ["Auto-open treasure chests"] = "自动开启宝箱",
         ["Auto-pickup ammo boxes"] = "自动拾取弹药箱",
         ["Auto-pickup oxygen boxes (chests)"] = "自动拾取氧气箱",
-        ["Radius around the player to auto-pick items (in game units)"] = "自动拾取物品的范围半径（游戏单位）",
+        ["Radius around the player to auto-pick items (in game units). Oxygen boxes always use a fixed 1.0 radius regardless of this setting."] = "自动拾取物品的范围半径（游戏单位）。氧气箱固定使用 1.0 半径，不受此设置影响。",
         ["Enable the dive map HUD"] = "启用潜水地图 HUD",
         ["Key to toggle the enlarged map view"] = "切换大地图视图的按键",
         ["Show the minimap overlay during diving"] = "潜水时显示小地图",

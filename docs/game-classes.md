@@ -19,9 +19,12 @@
 | `FishInteractionBody` | 可交互的鱼 | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `InteractionType`, `isInteractable`(bool), `IsEnableInteraction`(bool get/set) |
 | `PickupInstanceItem` | 掉落物品基类（所有可拾取物品） | `CheckAvailableInteraction(BaseCharacter)`, `SuccessInteract(BaseCharacter)`, `isNeedSwapSetID`, `usePreset`, `GetItemID()` |
 | `PickupInstanceItem_SeaUrchin` | 海胆（PickupInstanceItem 子类） | `_grabLevel`(int) — 所需 grab level，低于该等级拾取会扣血 |
-| `InstanceItemChest` | 宝箱 | `SuccessInteract(BaseCharacter)`, `IsOpen` |
+| `InstanceItemChest` | 宝箱 | `SuccessInteract(BaseCharacter)`, `IsOpen`, `command`(InstanceItemChestCommand_SO), `m_ItemSpawner`(ISpawnObjectHandler) |
+| `InstanceItemSpawnHandler` | 宝箱物品生成器（实现 `ISpawnObjectHandler`） | `CreateSpawnItem(BaseCharacter, int, bool)`, `InstantiateItem(...)`, `SpawnItemListTID`(int) |
+| `SpawnerChestO2` : `SpawnerChestItem` | O2 氧气宝箱生成器 | `ChestItem`(InstanceItemChest), `_DrawO2IconName` |
 | `CrabTrapZone` | 捕蟹笼区域 | `CheckAvailableInteraction(BaseCharacter)`, `SetUpCrabTrap(int)` |
-| `OxygenArea` | 氧气补充区域 | `minHP`, `chargeTime`, `isCharging`（注意：不在宝箱上） |
+| `OxygenArea` | 氧气补充区域（proximity trigger，非宝箱） | `OnPlayerEnter(bool)`, `minHP`(float, default 0.5), `chargeTime`(float, default 1.0), `isCharging`(bool) |
+| `O2RecoverGetItemAbility` | 氧气恢复 ability（订阅 LootBox.ItemSignal） | `DoAbility()`, `SetData(CharacterAbilityData)` — 通过 UniRx Observable 监听物品信号 |
 | `FishInteractionBody` 内部枚举 | 鱼交互类型 | `FishInteractionType`: None=0, Carving=1, Pickup=2, Calldrone=3 |
 | `ConditionFishInteraction` | 条件交互控制器（挂在需要解锁才能拾取的鱼上） | `conditionType`(ConditionType), `IsAbleToInteraction`(bool get), `itemUID`(int), `unlockedContent`(ContentsList) |
 | `GrabObject` | 可抓取对象 | `_grabLevel`(int), `grabLevel`(int get), `_grabType`(GrabType enum), `_type`(Type: PickUp/NonPickUp) |
@@ -51,6 +54,24 @@
 - `IsAbleToInteraction` getter: 同上逻辑，但只读
 
 **结论**：可捕捉生物在**整个生命周期**中 `InteractionType` 都是 `Pickup`，无论活着还是已被捕获。
+
+### 氧气宝箱机制（O2 chest / ShellFish004）
+
+游戏中有两种氧气补充来源，机制完全不同：
+
+**1. 氧气宝箱**（`InstanceItemChest`，prefab 名含 `Chest_O2` 或 `Loot_ShellFish004`）：
+- `SuccessInteract` → `InstanceItemSpawnHandler.CreateSpawnItem` → `InstantiateItem` → 在宝箱位置**实例化一个 `OxygenZone` 物体**（带 trigger collider）
+- `OxygenZone` 是一个临时氧气区域，玩家必须**物理进入**其 trigger 范围才能触发 `PlayerCharacter.OnChargeOxygen` 获得氧气
+- `SuccessInteract` 本身**不直接给氧气**，`IsOpen` 也是异步设置的
+- 两种氧气宝箱（Chest_O2 和 Loot_ShellFish004）共享相同的 `TargetSpawnItemListTID=3082001`，行为完全一致
+- **⛔ 远距离调用 `SuccessInteract` 会白开宝箱**：OxygenZone 在宝箱位置生成，但玩家不在那里，无法获得氧气。AutoPickup 对氧气箱使用固定 1.0 半径
+
+**2. OxygenArea**（独立 `MonoBehaviour`，非宝箱）：
+- 通过 `OnTriggerEnter2D` → `OnPlayerEnter(true)` → `PlayerBreathHandler.StartOxygenCharge` 直接充氧
+- 条件：玩家氧气低于 `minHP` 阈值（默认 50%）才会充氧
+- 与宝箱系统无关，AutoPickup 不处理
+
+**注意**：`O2RecoverGetItemAbility`（通过 UniRx 订阅 `LootBox.ItemSignal`）存在于代码中，但实测氧气宝箱链路中**未触发**该 ability——氧气完全通过 OxygenZone trigger 给予。
 
 ### 鱼的死亡/捕获状态检测（DiveMap 场景）
 
