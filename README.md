@@ -89,6 +89,8 @@ Dave the Diver\BepInEx\config\com.davediver.expansion.cfg
 | `Enabled` | `true` | Master toggle for auto-pickup |
 | `AutoPickupFish` | `false` | Auto-collect dead fish |
 | `AutoPickupItems` | `true` | Auto-collect dropped items |
+| `AutoPickupAmmoBox` | `true` | Auto-collect ammo boxes |
+| `AutoPickupOxygenBox` | `true` | Auto-collect oxygen chests |
 | `AutoOpenChests` | `false` | Auto-open treasure chests |
 | `PickupRadius` | `1.0` | Collection radius (game units) |
 

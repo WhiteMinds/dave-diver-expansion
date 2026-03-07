@@ -111,6 +111,8 @@ You can also edit the config file directly:
 [*][font=Courier New]Enabled[/font] (default: true) — Master toggle
 [*][font=Courier New]AutoPickupFish[/font] (default: false) — Auto-collect dead fish
 [*][font=Courier New]AutoPickupItems[/font] (default: true) — Auto-collect dropped items
+[*][font=Courier New]AutoPickupAmmoBox[/font] (default: true) — Auto-collect ammo boxes
+[*][font=Courier New]AutoPickupOxygenBox[/font] (default: true) — Auto-collect oxygen chests
 [*][font=Courier New]AutoOpenChests[/font] (default: false) — Auto-open treasure chests
 [*][font=Courier New]PickupRadius[/font] (default: 1.0) — Collection radius in game units
 [/list]
@@ -155,6 +157,16 @@ You can also edit the config file directly:
 [/list]
 
 [size=3][b]Changelog[/b][/size]
+
+[b]v1.6.0[/b]
+[list]
+[*]Fix: Fish density (Ecology Protection upgrade) not working at 130m+ depth — replaced BoidGroup.Start trigger with per-frame scan of InGameManager.FishAllocators to cover both boid-based and single-fish allocators
+[*]Fix: Movement Speed Enhancement lost after entering/exiting sub-scenes (Records Room, etc.) — buff now re-applies to new PlayerCharacter instance
+[*]Fix: Oxygen chest auto-pickup wasting chests at long range — oxygen chests now use a fixed 1.0 unit pickup radius regardless of PickupRadius setting
+[*]Fix: DiveMap display on ultrawide monitors
+[*]New: AutoPickup ammo box and oxygen box toggles — independently enable/disable auto-pickup for ammo boxes and oxygen chests
+[*]Internal: Unified debug log toggle to a single global Plugin.DebugLog config entry
+[/list]
 
 [b]v1.5.0[/b]
 [list]
