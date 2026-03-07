@@ -789,6 +789,7 @@ public static class iDiverExtension
                 if (__instance != _lastPlayer)
                 {
                     _lastPlayer = __instance;
+                    _lastMoveLevel = -1;
                     _lastTrapBonus = 0;
                     _expectedTrapCount = -1;
                     _trapBaseInitialized = false;

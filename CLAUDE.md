@@ -88,6 +88,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 | [docs/assetripper-usage.md](docs/assetripper-usage.md) | AssetRipper headless 用法、游戏翻译数据提取 | 需要提取游戏资源/翻译时 |
 | [docs/dlc-godzilla.md](docs/dlc-godzilla.md) | Godzilla DLC 结构（场景、类、AssetBundle 内容、游戏流程） | 开发涉及 DLC 内容/兼容性时 |
 | [docs/idiver-upgrade-system.md](docs/idiver-upgrade-system.md) | iDiver 升级系统逆向（SubEquipment/IntegratedItem/SpecDataBase 数据结构、鱼叉数据表、升级流程、MakeStatusDic 属性映射、武器伤害路径、存档结构、CallerCount 安全表、UIDataText 覆盖踩坑、自定义图标加载） | 修改 iDiver 升级面板、新增升级项、修改武器伤害时 |
+| [docs/fish-density-system.md](docs/fish-density-system.md) | 鱼群密度系统逆向（FishAllocator 生成流程、IsInstanced 时序、Boid 鱼群 vs 单体鱼差异、InGameManager.FishAllocators API、场景结构、实现方案对比） | 修改鱼群密度加倍功能时 |
 | [docs/seahorse-race-internals.md](docs/seahorse-race-internals.md) | 海马赛系统逆向（状态机、碰撞机制、OnObstacle 时序陷阱、仪表系统、AI 参数、赛道结构） | 修改海马赛自动操作功能时 |
 | [tools/save-codec/](tools/save-codec/) | 存档编解码工具（XOR `.sav` ↔ `.json`）、存档格式文档、移植笔记 | 需要读取/修改游戏存档时 |
 
