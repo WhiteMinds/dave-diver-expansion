@@ -39,7 +39,7 @@ public static class DiveMap
     public static ConfigEntry<bool> ShowOres;
     public static ConfigEntry<float> MarkerScale;
     public static ConfigEntry<bool> ShowDistantFish;
-    public static ConfigEntry<bool> DebugLog;
+    public static ConfigEntry<bool> DebugLog => Plugin.DebugLog;
 
     public static void Init(ConfigFile config)
     {
@@ -109,9 +109,6 @@ public static class DiveMap
         ShowDistantFish = config.Bind(
             "DiveMap", "ShowDistantFish", false,
             "Show markers for distant fish that are streamed out by the game (frozen at last known position)");
-        DebugLog = config.Bind(
-            "Debug", "DebugLog", false,
-            "Enable verbose debug logging for DiveMap diagnostics");
         ClassInjector.RegisterTypeInIl2Cpp<DiveMapBehaviour>();
         var go = new GameObject("DDE_DiveMapUpdater");
         Object.DontDestroyOnLoad(go);

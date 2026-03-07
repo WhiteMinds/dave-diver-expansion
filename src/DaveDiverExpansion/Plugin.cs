@@ -1,4 +1,5 @@
 using BepInEx;
+using BepInEx.Configuration;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
@@ -10,11 +11,15 @@ namespace DaveDiverExpansion;
 public class Plugin : BasePlugin
 {
     internal static new ManualLogSource Log;
+    internal static ConfigEntry<bool> DebugLog;
     private Harmony _harmony;
 
     public override void Load()
     {
         Log = base.Log;
+        DebugLog = Config.Bind(
+            "Debug", "DebugLog", false,
+            "Enable verbose debug logging for all features");
         Log.LogInfo($"Loading {MyPluginInfo.PLUGIN_NAME} v{MyPluginInfo.PLUGIN_VERSION}");
 
         // Initialize features

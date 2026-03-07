@@ -14,7 +14,6 @@ namespace DaveDiverExpansion.Features;
 public static class AutoSeahorseRace
 {
     private static ConfigEntry<bool> _enabled;
-
     // Gauge thresholds: 0-50=Run, 50-75=MaxRun(fastest), 75-100=OverRun(decel)
     private const float GaugeAccelTarget = 76f;
 
@@ -25,6 +24,8 @@ public static class AutoSeahorseRace
     // At 60fps max-speed the racer moves ~0.02 units/frame, so 0.1 ≈ 5 frames buffer.
     private const float DodgeBuffer = 0.1f;
 
+    private static int _logTimer;
+
     // Racer collider half-width along x-axis (cached once per race)
     private static float _racerHalfX;
     private static bool _racerHalfCached;
@@ -34,7 +35,6 @@ public static class AutoSeahorseRace
         _enabled = config.Bind(
             "AutoSeahorseRace", "Enabled", false,
             "Automatically control seahorse during racing");
-
         Plugin.Log.LogInfo("AutoSeahorseRace initialized");
     }
 
@@ -142,24 +142,28 @@ public static class AutoSeahorseRace
             try
             {
                 var racerValue = __instance.racerValue;
-                if (racerValue == null || !racerValue.isPlayer) return;
+                if (racerValue == null) { LogPeriodic("racerValue is null"); return; }
+                if (!racerValue.isPlayer) return;
 
                 var inputValue = __instance.inputValue;
-                if (inputValue == null) return;
+                if (inputValue == null) { LogPeriodic("inputValue is null"); return; }
 
                 // Only act during active racing states
                 var stateMachine = __instance.stateMachine;
-                if (stateMachine == null) return;
+                if (stateMachine == null) { LogPeriodic("stateMachine is null"); return; }
                 var currentState = stateMachine.currentState;
-                if (currentState == null) return;
+                if (currentState == null) { LogPeriodic("currentState is null"); return; }
                 var state = currentState.stateName;
 
                 // StateName: 0=Wait, 1=Ready, 2=Run, 3=MaxRun, 4=OverRun, 5=Jump, 6=Crawl, 7=Fail, 8=Fall, 9=Finish
                 int stateInt = (int)state;
-                if (stateInt < 2 || stateInt > 6) return;
+                if (stateInt < 2 || stateInt > 6) { LogPeriodic($"state={stateInt} out of range"); return; }
+
+                LogPeriodic($"ACTIVE state={stateInt} pos={__instance.transform.position}");
 
                 // Detect obstacle: first check trigger-based, then lookahead
                 var obstacle = __instance.obstacle;
+                bool fromTrigger = obstacle != null;
                 if (obstacle == null)
                     obstacle = FindObstacleAhead(__instance);
 
@@ -168,6 +172,7 @@ public static class AutoSeahorseRace
                     // type: hurdle(0) → move up (Jump), crawl(1) → move down (Crawl)
                     float moveY = (int)obstacle.type == 0 ? 1f : -1f;
                     inputValue.move = new Vector2(0f, moveY);
+                    LogDebug($"DODGE type={(int)obstacle.type} moveY={moveY} fromTrigger={fromTrigger} obsPos={obstacle.transform.position}");
                 }
                 else
                 {
@@ -178,11 +183,13 @@ public static class AutoSeahorseRace
                 var gauge = __instance.gauge;
                 if (gauge != null)
                 {
+                    LogPeriodic($"gauge={gauge.gauge:F1} target={GaugeAccelTarget}");
                     if (gauge.gauge < GaugeAccelTarget)
                         inputValue.OnAccel();
                 }
                 else
                 {
+                    LogPeriodic("gauge is null, calling OnAccel anyway");
                     inputValue.OnAccel();
                 }
 
@@ -196,6 +203,7 @@ public static class AutoSeahorseRace
                 {
                     float ratio = trackTag.CalcGaugeTransRatio();
                     inputValue.IsTag = ratio >= 0.9f;
+                    LogDebug($"TAG ratio={ratio:F2} isTag={inputValue.IsTag}");
                 }
                 else
                 {
@@ -204,9 +212,22 @@ public static class AutoSeahorseRace
             }
             catch (System.Exception e)
             {
-                Plugin.Log.LogWarning($"AutoSeahorseRace error: {e.Message}");
+                Plugin.Log.LogWarning($"AutoSeahorseRace error: {e.Message}\n{e.StackTrace}");
             }
         }
+    }
+
+    private static void LogPeriodic(string msg)
+    {
+        if (!Plugin.DebugLog.Value) return;
+        if (++_logTimer % 120 == 1) // ~every 2s at 60fps
+            Plugin.Log.LogInfo($"AutoSeahorseRace: {msg}");
+    }
+
+    private static void LogDebug(string msg)
+    {
+        if (Plugin.DebugLog.Value)
+            Plugin.Log.LogInfo($"AutoSeahorseRace: {msg}");
     }
 
     /// <summary>
