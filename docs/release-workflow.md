@@ -154,6 +154,6 @@ cd "$SKILL_DIR" && node run.js "F:/Projects/dave-diver-expansion/.tmp/pw-nexusmo
 | 添加视频按钮 | `button#upload_video` | "Add this video" |
 
 **已知文件 ID**：
-- v0.1.0: `152` | v0.2.0: `153` | v0.3.0: `154` | v1.0.0: `155`
-- 新上传的文件 ID = 上一个 + 1（规律未确认，以实际页面为准）
+- v0.1.0: `152` | v0.2.0: `153` | v0.3.0: `154` | v1.0.0: `155` | v1.1.0: `156` | v1.2.0: `157` | v1.2.1: `158` | v1.3.0: `159` | v1.4.0: `160` | v1.4.0(dup): `161` | v1.5.0: `162` | v1.6.0: `163`
+- 新上传的文件 ID 递增分配（以实际页面为准）
 - 确认方式：用 Playwright 访问文件管理页，查询 `[id^="file-entry-"]` 元素（参见 `.tmp/pw-check-fileid.js`）
