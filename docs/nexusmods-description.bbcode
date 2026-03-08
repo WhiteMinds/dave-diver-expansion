@@ -158,6 +158,11 @@ You can also edit the config file directly:
 
 [size=3][b]Changelog[/b][/size]
 
+[b]v1.6.1[/b]
+[list]
+[*]Fix: Drone Count and Crab Trap Count enhancements doubling on every zone transition (e.g. entering caves, visiting Sea People Village) — the game preserves runtime values across zones, so the mod bonus was being re-applied on top of the already-boosted count each time
+[/list]
+
 [b]v1.6.0[/b]
 [list]
 [*]Fix: Fish density (Ecology Protection upgrade) not working at 130m+ depth — replaced BoidGroup.Start trigger with per-frame scan of InGameManager.FishAllocators to cover both boid-based and single-fish allocators
