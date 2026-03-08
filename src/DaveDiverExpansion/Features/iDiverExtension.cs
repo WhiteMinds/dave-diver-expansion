@@ -5,6 +5,7 @@ using DaveDiverExpansion.Helpers;
 using HarmonyLib;
 using Il2CppInterop.Runtime;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DaveDiverExpansion.Features;
 
@@ -785,17 +786,27 @@ public static class iDiverExtension
         {
             try
             {
-                // Reset per-dive state when PlayerCharacter instance changes (new dive)
+                // Reset per-dive state when PlayerCharacter instance changes
+                // (zone transition within a dive, or a completely new dive)
                 if (__instance != _lastPlayer)
                 {
+                    Plugin.Log.LogInfo($"[iDiverExt] PlayerCharacter changed, scene={SceneManager.GetActiveScene().name}");
                     _lastPlayer = __instance;
                     _lastMoveLevel = -1;
-                    _lastTrapBonus = 0;
-                    _expectedTrapCount = -1;
+                    // DO NOT reset _lastTrapBonus/_lastDroneBonus here!
+                    // The game copies the runtime AvailableLiftDroneCount/AvailableCrabTrapCount
+                    // (which already includes our bonus) to the new PlayerCharacter via
+                    // SavePlayerData._StorePlayerAvailableItems → SetCharacterWithPlayerData.
+                    // If we reset _lastBonus to 0, ApplyDroneCount sees delta=wantBonus and
+                    // adds the bonus AGAIN on top of the already-boosted value.
+                    // Preserving _lastBonus means delta=0 → no double-apply on zone transition.
+                    // On a truly new dive the game recomputes from SubEquipment (no bonus),
+                    // so current will differ from _expectedCount → overwrite detection fires
+                    // → _lastBonus resets to 0 → bonus is correctly re-applied.
                     _trapBaseInitialized = false;
-                    _lastDroneBonus = 0;
-                    _expectedDroneCount = -1;
                     _droneBaseInitialized = false;
+                    // _expectedCount is kept so overwrite detection works on the first
+                    // non-zero value the game sets on the new PC.
                 }
 
                 DebugSpawnBooster(__instance);
@@ -991,28 +1002,19 @@ public static class iDiverExtension
             // Wait for game to initialize the base count (same as drone)
             if (!_trapBaseInitialized)
             {
-                if (current == 0)
-                {
-                    _expectedTrapCount = 0;
-                    return;
-                }
+                if (current == 0) return;
                 _trapBaseInitialized = true;
-                _lastTrapBonus = 0;
-                Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: game base initialized to {current}");
+                Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: base init current={current}, lastBonus={_lastTrapBonus}");
             }
 
-            // Detect if game overwrote our value (e.g., dive init setting base count)
+            // Detect if game overwrote our value (new dive init or other)
             if (_expectedTrapCount >= 0 && current != _expectedTrapCount)
             {
                 int diff = _expectedTrapCount - current;
-                if (diff == 1)
+                if (diff != 1)
                 {
-                    // Trap placement (dec by 1) — our bonus is still in effect
-                }
-                else
-                {
-                    // Game overwrite (init or other) — our bonus was lost
-                    Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: OVERWRITE detected, expected={_expectedTrapCount}, current={current}, diff={diff}, resetting lastBonus from {_lastTrapBonus} to 0");
+                    // Game overwrite (new dive init or other) — our bonus was lost
+                    Plugin.Log.LogInfo($"[iDiverExt] CrabTrapCount: overwrite detected, expected={_expectedTrapCount}, current={current}, resetting lastBonus from {_lastTrapBonus} to 0");
                     _lastTrapBonus = 0;
                 }
             }
@@ -1041,33 +1043,23 @@ public static class iDiverExtension
             int current = player.AvailableLiftDroneCount;
 
             // Wait for game to initialize the base count before applying bonus.
-            // The game sets AvailableLiftDroneCount from SubEquipment.DroneCount at some
-            // point after PlayerCharacter creation. If we apply bonus while current=0,
-            // the game's base init can silently overwrite us (especially when base == bonus).
             if (!_droneBaseInitialized)
             {
-                if (current == 0)
-                {
-                    _expectedDroneCount = 0;
-                    return;
-                }
+                if (current == 0) return;
                 _droneBaseInitialized = true;
-                _lastDroneBonus = 0;
-                Plugin.Log.LogInfo($"[iDiverExt] DroneCount: game base initialized to {current}");
+                Plugin.Log.LogInfo($"[iDiverExt] DroneCount: base init current={current}, lastBonus={_lastDroneBonus}");
             }
 
-            // Detect game overwrite (same pattern as crab trap)
+            // Detect game overwrite: game reset the count to something unexpected.
+            // This fires on new dives (game recomputes from SubEquipment, losing our bonus)
+            // and on usage (dec by 1). Usage (diff==1) is harmless — bonus remains in effect.
             if (_expectedDroneCount >= 0 && current != _expectedDroneCount)
             {
                 int diff = _expectedDroneCount - current;
-                if (diff == 1)
+                if (diff != 1)
                 {
-                    // Drone usage (dec by 1) — our bonus is still in effect
-                }
-                else
-                {
-                    // Game overwrite (init or other) — our bonus was lost
-                    Plugin.Log.LogInfo($"[iDiverExt] DroneCount: OVERWRITE detected, expected={_expectedDroneCount}, current={current}, diff={diff}, resetting lastBonus from {_lastDroneBonus} to 0");
+                    // Game overwrite (new dive init or other) — our bonus was lost
+                    Plugin.Log.LogInfo($"[iDiverExt] DroneCount: overwrite detected, expected={_expectedDroneCount}, current={current}, resetting lastBonus from {_lastDroneBonus} to 0");
                     _lastDroneBonus = 0;
                 }
             }

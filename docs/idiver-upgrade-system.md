@@ -535,10 +535,10 @@ PlayerCharacter.FixedUpdate() (CallerCount=0)
 
 游戏在 PlayerCharacter 创建后的某个不确定时机初始化 `AvailableCrabTrapCount`，会覆写我们在 Update 中添加的 bonus。简单的"只触发一次的 delta 跟踪"不可靠。
 
-**解决方案**：base-init 等待 + overwrite detection 两阶段：
+**解决方案**：base-init 等待 + overwrite detection + 区域切换保留：
 
 **阶段一：等待游戏初始化 base（`_baseInitialized=false`）**
-- 在 `current==0` 时不应用 bonus，仅设 `_expectedCount=0` 并 return
+- 在 `current==0` 时不应用 bonus，直接 return
 - 当 `current>0` 时标记 `_baseInitialized=true`，进入阶段二
 - **⛔ 不能跳过此阶段**：若在 `current=0` 时就加 bonus，且 game base 恰好等于 bonus（如 base=3, bonus=3），游戏覆写后 `expected==current`，overwrite 完全不可见，bonus 被静默吞掉
 
@@ -548,4 +548,9 @@ PlayerCharacter.FixedUpdate() (CallerCount=0)
   2. `current == expected - 1` → 放置/使用消耗（dec by 1），bonus 仍在，仅更新 expected
   3. 其他差值 → 游戏覆写（init），重置 `_lastBonus = 0` → 下次循环重新加 bonus
 
-新 PlayerCharacter 实例检测（`__instance != _lastPlayer`）→ 全部重置（含 `_baseInitialized`）。
+**⛔ 区域切换陷阱（PlayerCharacter 变更时的 `_lastBonus` 处理）**
+
+区域切换（如 Glacial→SecretRoom→Glacial）会创建新 PlayerCharacter 实例。游戏通过 `SavePlayerData._StorePlayerAvailableItems(droneCount, trapCount)` 保存当前运行时值，然后在新 PC 上通过 `SetCharacterWithPlayerData(keepDroneCount=false)` 恢复。**恢复的值已包含我们之前加的 bonus**。
+
+- **⛔ 错误做法**：在 PC 变更时重置 `_lastBonus=0`。此时 `delta = wantBonus - 0 = wantBonus`，在已含 bonus 的值上再加一次 → 每次区域切换 bonus 翻倍（3→6→9→12...）
+- **✅ 正确做法**：PC 变更时**保留 `_lastBonus` 和 `_expectedCount`**，只重置 `_baseInitialized=false`。区域切换时游戏恢复的值=`expected` → `delta=0`，不重复加。新潜水时游戏从 SubEquipment 重算 base（不含 bonus） → `current≠expected` → overwrite 检测触发 → `_lastBonus` 正确归零 → bonus 被重新应用

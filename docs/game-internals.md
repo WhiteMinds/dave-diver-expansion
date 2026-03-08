@@ -395,6 +395,22 @@ if (subBoundsCol != null)
 
 **注意**：不要尝试用逃生点坐标动态扩展边界 — 逃生点可能在距关卡很远的位置（如 1000+ 单位外），会导致地图比例严重失真。
 
+### 区域切换与 PlayerCharacter 生命周期
+
+潜水过程中进入子区域（如 Glacial→SecretRoom→Glacial、主区域→海底人村）会创建**新的 PlayerCharacter 实例**。
+
+**状态保存/恢复机制**：
+1. 离开区域前：游戏调用 `SavePlayerData._StorePlayerAvailableItems(droneCount, trapCount)` 保存当前 `AvailableLiftDroneCount` 和 `AvailableCrabTrapCount` 的**运行时值**
+2. 进入新区域后：`InGameManager` 调用 `PlayerCharacter.Init()` + `SetCharacterWithPlayerData(keepPlayerHP=true, keepDroneCount=false)` 从 SavePlayerData 恢复
+
+**⛔ 陷阱**：`_StorePlayerAvailableItems` 保存的是运行时值（包含 mod 的 bonus）。如果 mod 在新 PC 创建时重置跟踪状态并重新应用 bonus，会导致 bonus 在每次区域切换时累加。
+
+**新潜水 vs 区域切换的区别**：
+- **新潜水**：游戏从 SubEquipment 数据重新计算 base（不含 mod bonus）
+- **区域切换**：游戏从 SavePlayerData 恢复（包含 mod bonus）
+
+详见 [docs/idiver-upgrade-system.md](idiver-upgrade-system.md) § Overwrite-Detection 模式。
+
 ### Harmony + IL2CPP Virtual 方法陷阱
 
 **⛔ 不要 patch 继承链中的 virtual 方法（如 `OnDie`），除非该类是最终类。**

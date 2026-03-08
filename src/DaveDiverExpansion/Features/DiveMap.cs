@@ -39,7 +39,9 @@ public static class DiveMap
     public static ConfigEntry<bool> ShowOres;
     public static ConfigEntry<float> MarkerScale;
     public static ConfigEntry<bool> ShowDistantFish;
-    public static ConfigEntry<bool> DebugLog => Plugin.DebugLog;
+    public static ConfigEntry<bool> DiveMapDebugLog;
+    /// <summary>DiveMap debug logging requires BOTH global DebugLog AND DiveMapDebugLog.</summary>
+    public static bool IsDebug => Plugin.DebugLog.Value && DiveMapDebugLog.Value;
 
     public static void Init(ConfigFile config)
     {
@@ -109,6 +111,9 @@ public static class DiveMap
         ShowDistantFish = config.Bind(
             "DiveMap", "ShowDistantFish", false,
             "Show markers for distant fish that are streamed out by the game (frozen at last known position)");
+        DiveMapDebugLog = config.Bind(
+            "Debug", "DiveMapDebugLog", false,
+            "Enable verbose debug logging for DiveMap (requires global DebugLog to also be enabled)");
         ClassInjector.RegisterTypeInIl2Cpp<DiveMapBehaviour>();
         var go = new GameObject("DDE_DiveMapUpdater");
         Object.DontDestroyOnLoad(go);
@@ -1181,7 +1186,7 @@ public class DiveMapBehaviour : MonoBehaviour
             catch { }
         }
         int chestSkipped = 0;
-        bool debugChest = DiveMap.DebugLog.Value && !_chestDebugDone;
+        bool debugChest = DiveMap.IsDebug && !_chestDebugDone;
         if (DiveMap.ShowChests.Value)
         {
             try
@@ -1220,7 +1225,7 @@ public class DiveMapBehaviour : MonoBehaviour
         {
             try
             {
-                bool debugFish = DiveMap.DebugLog.Value;
+                bool debugFish = DiveMap.IsDebug;
                 bool showDistant = DiveMap.ShowDistantFish.Value;
                 foreach (var fish in EntityRegistry.AllFish)
                 {
@@ -1354,7 +1359,7 @@ public class DiveMapBehaviour : MonoBehaviour
 
         _cachedEntityCount = _staticCache.Count + _fishCache.Count + _oreCache.Count + _crabTrapCache.Count;
 
-        if (DiveMap.DebugLog.Value)
+        if (DiveMap.IsDebug)
         {
             int fishActive = 0, fishDistant = 0, fishCatchable = 0;
             for (int i = 0; i < _fishCache.Count; i++)

@@ -21,7 +21,7 @@ public static class EntityRegistry
     private const float PurgeInterval = 2f;
     private static float _purgeTimer;
 
-    private static bool IsDebug => Features.DiveMap.DebugLog?.Value == true;
+    private static bool IsDebug => Plugin.DebugLog?.Value == true;
 
     /// <summary>
     /// Remove destroyed objects from registries that lack OnDisable patches.
@@ -59,7 +59,7 @@ static class PickupItemOnEnablePatch
     static void Postfix(PickupInstanceItem __instance)
     {
         EntityRegistry.AllItems.Add(__instance);
-        if (Features.DiveMap.DebugLog?.Value == true)
+        if (Plugin.DebugLog?.Value == true)
             Plugin.Log.LogInfo($"[EntityRegistry] Item+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllItems.Count})");
     }
 }
@@ -70,7 +70,7 @@ static class PickupItemOnDisablePatch
     static void Postfix(PickupInstanceItem __instance)
     {
         EntityRegistry.AllItems.Remove(__instance);
-        if (Features.DiveMap.DebugLog?.Value == true)
+        if (Plugin.DebugLog?.Value == true)
             Plugin.Log.LogInfo($"[EntityRegistry] Item- {__instance.gameObject.name} (total={EntityRegistry.AllItems.Count})");
     }
 }
@@ -81,7 +81,7 @@ static class ChestOnEnablePatch
     static void Postfix(InstanceItemChest __instance)
     {
         EntityRegistry.AllChests.Add(__instance);
-        if (Features.DiveMap.DebugLog?.Value == true)
+        if (Plugin.DebugLog?.Value == true)
             Plugin.Log.LogInfo($"[EntityRegistry] Chest+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllChests.Count})");
     }
 }
@@ -92,7 +92,7 @@ static class ChestSuccessInteractPatch
     static void Postfix(InstanceItemChest __instance)
     {
         EntityRegistry.AllChests.Remove(__instance);
-        if (Features.DiveMap.DebugLog?.Value == true)
+        if (Plugin.DebugLog?.Value == true)
             Plugin.Log.LogInfo($"[EntityRegistry] Chest- (interact) {__instance.gameObject.name} (total={EntityRegistry.AllChests.Count})");
     }
 }
@@ -103,7 +103,7 @@ static class FishAwakePatch
     static void Postfix(FishInteractionBody __instance)
     {
         EntityRegistry.AllFish.Add(__instance);
-        if (Features.DiveMap.DebugLog?.Value == true)
+        if (Plugin.DebugLog?.Value == true)
             Plugin.Log.LogInfo($"[EntityRegistry] Fish+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllFish.Count})");
     }
 }
@@ -154,7 +154,7 @@ static class CrabTrapStartPatch
     {
         if (__instance == null) return;
         EntityRegistry.AllCrabTraps.Add(__instance);
-        if (Features.DiveMap.DebugLog?.Value == true)
+        if (Plugin.DebugLog?.Value == true)
             Plugin.Log.LogInfo($"[EntityRegistry] CrabTrap+ {__instance.gameObject.name} pos={__instance.transform.position} (total={EntityRegistry.AllCrabTraps.Count})");
     }
 }

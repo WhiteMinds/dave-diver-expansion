@@ -382,7 +382,7 @@ public static class ConfigUI
                 "MapSize", "MiniMapZoom", "MapOpacity",
                 "ShowEscapePods", "ShowOres", "ShowFish", "ShowAggressiveFish", "ShowCatchableFish", "ShowDistantFish", "ShowItems", "ShowChests", "ShowCrabTraps"
             },
-            ["Debug"] = new[] { "DebugLog", "AutoContinue" }
+            ["Debug"] = new[] { "DebugLog", "DiveMapDebugLog", "AutoContinue" }
         };
 
         foreach (var section in ordered)

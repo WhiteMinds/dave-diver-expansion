@@ -81,7 +81,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 | 文档 | 内容 | 何时查阅 |
 |------|------|----------|
 | [docs/game-classes.md](docs/game-classes.md) | 游戏类参考表、物品/鱼/宝箱分类、鱼交互条件系统、捕虫网/手套装备、玩家状态锁定、语言系统、场景切换系统 | 开发新 Harmony 补丁、操作游戏实体时 |
-| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、IsilDump 逆向、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统、存档加载管线、ObscuredString 加密、标题画面系统（TitleManager 初始化流程、ContinueGame 机制、时序陷阱） | 探索未知游戏类、排查反编译问题、存档系统调试、标题画面交互时 |
+| [docs/game-internals.md](docs/game-internals.md) | 反编译技巧、IsilDump 逆向、单例模式、场景层级、逆向工具、Burst/Job 限制、暂停菜单系统、存档加载管线、ObscuredString 加密、标题画面系统、**区域切换 PlayerCharacter 生命周期**（SavePlayerData 状态保存/恢复、bonus 累加陷阱） | 探索未知游戏类、排查反编译问题、存档系统调试、标题画面交互、**修改跨区域持久化的运行时值时** |
 | [docs/ugui-il2cpp-notes.md](docs/ugui-il2cpp-notes.md) | uGUI + IL2CPP 踩坑记录（布局、Dropdown 模板、ClassInjector） | 修改/新增 ConfigUI 面板 UI 时 |
 | [docs/divemap-perf.md](docs/divemap-perf.md) | DiveMap 性能优化数据（CPU/GPU profiling） | 优化 DiveMap 性能时 |
 | [docs/release-workflow.md](docs/release-workflow.md) | CI/CD、发布流程、NexusMods 上传、Playwright 自动化、DOM 选择器 | 发布新版本时 |
@@ -113,6 +113,7 @@ node tools/save-codec/decode.mjs --test GameSave_00_GD.sav  # 回环测试
 - **⛔ `DelegateSupport.ConvertDelegate` 不可用于 UIDataText.OverrideTextFunc**——创建的 IL2CPP 委托对象非 null，但 native 代码调用时返回空值。覆盖 UIDataText 文本的正确做法：`uiDataText.enabled = false`（禁用 Refresh）+ 直接设 `TMP_Text.text`。复用面板需在 Prefix 恢复 `enabled = true`（详见 [docs/idiver-upgrade-system.md](docs/idiver-upgrade-system.md) § 4.2）
 - **CallerCount 只影响 Harmony patch，不影响 interop 调用** — CallerCount>0 的方法不能 patch（被内联），但通过 interop 属性/方法**直接调用**始终走 `il2cpp_runtime_invoke`，与内联无关。不要因为一个方法"不能 patch"就排除"调用"它
 - **⛔ `Object.Instantiate(运行时实例)` 会复制 IL2CPP native 状态** — 克隆的组件携带原始对象的初始化标志和 native 指针，导致 AI/协程等无法正确重新初始化。要创建功能正常的游戏对象，必须从 **prefab** 实例化（如调用游戏自身的工厂方法），而非克隆已运行的实例
+- **⛔ 区域切换会创建新 PlayerCharacter 并恢复运行时值** — 游戏通过 `SavePlayerData._StorePlayerAvailableItems` 保存 `AvailableLiftDroneCount`/`AvailableCrabTrapCount` 的**运行时值**（含 mod bonus），在新区域通过 `SetCharacterWithPlayerData` 恢复。修改这些值的 mod 代码不能在 PC 变更时重置跟踪状态，否则 bonus 每次区域切换累加。详见 [docs/game-internals.md](docs/game-internals.md) § 区域切换与 PlayerCharacter 生命周期
 
 ## 配置系统
 
